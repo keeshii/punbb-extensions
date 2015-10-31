@@ -1,0 +1,455 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<!--
+/**
+ * Assign medals and rewards to users
+ *
+ * @copyright (C) 2008-2013 PunBB
+ * @license http://www.gnu.org/licenses/gpl.html GPL version 2 or higher
+ * @package om_medals
+ * @author keeshii
+ */
+-->
+
+<extension engine="1.0">
+	<id>om_medals</id>
+	<title>Medal system</title>
+	<version>0.0.2</version>
+	<description>Assign medals and rewards to users.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<note type="install" timing="pre">HTTP server must have write access into 'img' folder inside extension. Otherwise you won't be able to define medales.</note>
+	
+	<note type="uninstall" timing="pre">All users rewards will be removed during the uninstall process. It is strongly recommended you to disable "Medals system" extension instead or to upgrade it without uninstalling.</note>
+
+
+	<install><![CDATA[
+		$schema = array(
+			'FIELDS' => array(
+				'id' => array(
+					'datatype' => 'SERIAL',
+					'allow_null' => false
+				),
+				'medal_name' => array(
+					'datatype' => 'VARCHAR(200)',
+					'allow_null' => false,
+					'default' => '\'New medal\''
+				),
+				'medal_desc' => array(
+					'datatype' => 'TEXT',
+					'allow_null' => true,
+				),
+				'disp_position' => array(
+					'datatype' => 'INT(10)',
+					'allow_null' => false,
+					'default' => '0'
+				),
+				'medal_type' => array(
+					'datatype' => 'TINYINT(3) UNSIGNED',
+					'allow_null' => false,
+					'default' => 0,
+				),
+				'medal_width' => array(
+					'datatype' => 'INT(10)',
+					'allow_null' => false,
+					'default' => '0'
+				),
+				'medal_height' => array(
+					'datatype' => 'INT(10)',
+					'allow_null' => false,
+					'default' => '0'
+				),
+			),
+			'PRIMARY KEY'	=> array('id'),
+		);
+	
+		$forum_db->create_table('om_medals', $schema);
+		
+		if(!$forum_db->field_exists('users', 'om_medals'))
+			$forum_db->add_field('users', 'om_medals', 'VARCHAR(400)', true);
+		if(!$forum_db->field_exists('groups', 'g_mod_om_medals'))
+			$forum_db->add_field('groups', 'g_mod_om_medals', 'TINYINT(1)', false, '1');
+			
+		// Add extension options to the config table
+		$om_medals_config = array(
+			'o_om_medals_width' => '100',
+			'o_om_medals_height' => '100',
+			'o_om_medals_in_signature' => '0',
+			'o_om_medals_one_in_row' => '0',
+		);
+
+		foreach ($om_medals_config as $conf_name => $conf_value)
+		{
+			forum_config_add($conf_name, $conf_value);
+		}
+
+		// update from 0.0.1
+		// o_om_medals_moderator_assign changed to group permission
+		if (defined('EXT_CUR_VERSION') && EXT_CUR_VERSION == '0.0.1' && isset($forum_config['o_om_medals_moderator_assign'])) {
+			forum_config_remove('o_om_medals_moderator_assign');
+		}
+	]]></install>
+
+
+	<uninstall><![CDATA[
+		$forum_db->drop_table('om_medals');
+		$forum_db->drop_field('users', 'om_medals');
+		$forum_db->drop_field('groups', 'g_mod_om_medals');
+		
+		// Delete extension options from the config
+		forum_config_remove(array(
+			'o_om_medals_width',
+			'o_om_medals_height',
+			'o_om_medals_in_signature',
+			'o_om_medals_one_in_row',
+		));
+	]]></uninstall>
+
+
+	<hooks>
+		<hook id="hd_head"><![CDATA[
+// Incuding styles for om_medals (only for pages where medals are displayed)
+if (defined('FORUM_PAGE') && (FORUM_PAGE == 'help' || FORUM_PAGE == 'profile-about' || FORUM_PAGE == 'viewtopic'))
+{
+	if ($forum_user['style'] != 'Oxygen' && file_exists($ext_info['path'].'/css/'.$forum_user['style'].'/om_medals.min.css'))
+		$forum_loader->add_css($ext_info['url'].'/css/'.$forum_user['style'].'/om_medals.min.css', array('type' => 'url', 'media' => 'screen'));
+	else
+		$forum_loader->add_css($ext_info['url'].'/css/Oxygen/om_medals.min.css', array('type' => 'url', 'media' => 'screen'));
+}
+		]]></hook>
+		
+		
+		<hook id="aop_features_avatars_fieldset_end"><![CDATA[
+// forum settings
+
+// load language file
+if (!isset($lang_om_medals))
+{
+	if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+		include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+	else
+		include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+}
+		
+$forum_page['group_count'] = $forum_page['item_count'] = 0;
+?>
+
+<div class="content-head">
+	<h2 class="hn"><span><?php echo $lang_om_medals['Medals settings'] ?></span></h2>
+</div>
+<fieldset class="frm-group group<?php echo ++$forum_page['group_count'] ?>">
+	<legend class="group-legend"><span><?php echo $lang_om_medals['Features title'] ?></span></legend>
+
+
+	<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+		<div class="sf-box text">
+			<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_medals['Max width'] ?></span><small><?php echo $lang_om_medals['Max width info'] ?></small></label><br />
+			<span class="fld-input"><input type="text" id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_medals_width]" size="6" maxlength="6" value="<?php echo $forum_config['o_om_medals_width'] ?>" /></span>
+		</div>
+	</div>
+	<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+		<div class="sf-box text">
+			<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_medals['Max height'] ?></span><small><?php echo $lang_om_medals['Max height info'] ?></small></label><br />
+			<span class="fld-input"><input type="text" id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_medals_height]" size="6" maxlength="6" value="<?php echo $forum_config['o_om_medals_height'] ?>" /></span>
+		</div>
+	</div>
+
+	<fieldset class="mf-set set<?php echo ++$forum_page['item_count'] ?>">
+		<legend><span><?php echo $lang_om_medals['Display options'] ?></span></legend>
+		<div class="mf-box">
+			<div class="mf-item">
+				<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_medals_in_signature]" value="1"<?php if ($forum_config['o_om_medals_in_signature'] == '1') echo ' checked="checked"' ?> /></span>
+				<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_medals['Show medals below signature'] ?></label>
+			</div>
+		</div>
+		<div class="mf-box">
+			<div class="mf-item">
+				<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_medals_one_in_row]" value="1"<?php if ($forum_config['o_om_medals_one_in_row'] == '1') echo ' checked="checked"' ?> /></span>
+				<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_medals['Display one medal in a row'] ?></label>
+			</div>
+		</div>
+	</fieldset>
+
+<?php ($hook = get_hook('om_medals_aop_fieldset_end')) ? eval($hook) : null; ?>
+</fieldset>
+<?php
+		]]></hook>
+
+		<hook id="aop_features_validation"><![CDATA[
+// validate forum settings
+$form['om_medals_width'] = (!isset($form['om_medals_width']) || (int) $form['om_medals_width'] <= 0) ? '0' : (string)(int) $form['om_medals_width'];
+$form['om_medals_height'] = (!isset($form['om_medals_height']) || (int) $form['om_medals_height'] <= 0) ? '0' : (string)(int) $form['om_medals_height'];
+
+if (!isset($form['om_medals_in_signature']) || $form['om_medals_in_signature'] != '1')
+	$form['om_medals_in_signature'] = '0';
+
+if (!isset($form['om_medals_one_in_row']) || $form['om_medals_one_in_row'] != '1')
+	$form['om_medals_one_in_row'] = '0';
+
+($hook = get_hook('om_medals_aop_validation_end')) ? eval($hook) : null;
+		]]></hook>
+
+		<hook id="agr_add_edit_group_pre_mod_permissions_fieldset_end"><![CDATA[
+			if (!isset($lang_om_medals))
+			{
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+?>
+							<div class="mf-item">
+								<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="mod_om_medals" value="1"<?php if ($group['g_mod_om_medals'] == '1') echo ' checked="checked"' ?> /></span>
+								<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_medals['Allow mod medals label'] ?></label>
+							</div>
+<?php
+		]]></hook>
+
+		<hook id="agr_add_edit_end_validation"><![CDATA[
+			$mod_om_medals = $moderator == '1' && isset($_POST['mod_om_medals']) && $_POST['mod_om_medals'] == '1' ? '1' : '0';
+		]]></hook>
+
+		<hook id="agr_add_end_qr_add_group"><![CDATA[
+			$query['INSERT'] .= ', g_mod_om_medals';
+			$query['VALUES'] .= ', '.$mod_om_medals;
+		]]></hook>
+
+		<hook id="agr_edit_end_qr_update_group"><![CDATA[
+			$query['SET'] .= ', g_mod_om_medals='.$mod_om_medals;
+		]]></hook>
+
+		<hook id="mi_new_action"><![CDATA[
+// form to add, edit and delete medals (for admins only)
+$section = isset($_GET['section']) ? $_GET['section'] : null;
+			
+// add, edit, delete medals
+if ($section == 'om_medals_admin' && $forum_user['g_id'] == FORUM_ADMIN) {
+	require $ext_info['path'] . '/admin.php';
+}
+		]]></hook>
+		
+		<hook id="pf_change_details_new_section"><![CDATA[
+// form to assign medals to users (for admins and moderators)
+require $ext_info['path'] . '/profile.php';
+		]]></hook>
+			
+		<hook id="pf_start"><![CDATA[
+// we need medals language file in whole profiles
+// load language pack
+if (!isset($lang_om_medals))
+{
+	if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+		include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+	else
+		include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+}
+		]]></hook>
+		
+		<hook id="pf_new_action"><![CDATA[
+// action - save assignment of medals
+// executed when moderator (or admin) assigns medal
+if ($action == 'om_medals_assign' && ($forum_user['g_id'] == FORUM_ADMIN || ($forum_user['g_moderator'] == '1' && $forum_user['g_mod_om_medals'] == '1'))) {
+	if (!isset($_POST['assign'])) {
+		$om_medals_of_user = '';
+	} else {
+		$om_medals_of_user = array_map('intval', $_POST['assign']);
+		$om_medals_of_user= '['.implode('][', $om_medals_of_user).']';
+	}
+
+	$query = array(
+		'UPDATE'	=> 'users',
+		'SET'		=> 'om_medals=\''.$om_medals_of_user.'\'',
+		'WHERE'		=> 'id='.$id
+	);
+
+	($hook = get_hook('om_medals_profile_qr_assign_medals')) ? eval($hook) : null;
+	$forum_db->query_build($query) or error(__FILE__, __LINE__);
+
+
+	$forum_flash->add_info($lang_om_medals['Assignment updated']);
+
+	($hook = get_hook('om_medals_profile_assignment_pre_redirect')) ? eval($hook) : null;
+
+	redirect(forum_link($forum_url['om_medals_profile'], $id), $lang_om_medals['Assignment updated']);
+}
+		]]></hook>
+		
+		<hook id="pf_change_details_modify_main_menu"><![CDATA[
+// add link to assigning medals in the user profile
+if ($forum_user['g_id'] == FORUM_ADMIN || ($forum_user['g_moderator'] == '1' && $forum_user['g_mod_om_medals'] == '1'))
+	$forum_page['main_menu']['om_medals'] = '<li'.(($section == 'om_medals') ? ' class="active"' : '').'><a href="'.forum_link($forum_url['om_medals_profile'], $id).'"><span>'.$lang_om_medals['Section medals'].'</span></a></li>';
+		]]></hook>
+
+		<hook id="pf_change_details_about_pre_user_contact_info, pf_view_details_pre_user_activity_info" priority="9"><![CDATA[
+// display medals in user profile
+if (!defined('OM_MEDALS_FUNCTIONS_LOADED'))
+	require $ext_info['path'].'/functions.php';
+
+$om_medals_of_user = om_medals_decode_medal_string($user['om_medals']);
+if (!empty($om_medals_of_user)) {
+?>
+			<div class="ct-set data-set set<?php echo ++$forum_page['item_count'] ?>">
+				<div class="ct-box data-box">
+					<h4 class="ct-legend hn"><span><?php echo $lang_om_medals['User medals'] ?></span></h4>
+					<div class="om_medals-profile-data-box">
+					<?php
+						foreach ($om_medals_of_user as $cur_medal) {
+							echo '<span class="om_medals-profile '.($forum_config['o_om_medals_one_in_row'] ? 'om_medals-one-row' : '').'">'
+							.om_medals_generate_medal_tag($cur_medal).'</span> ';
+						}
+					?>
+					</div>
+				</div>
+			</div>
+<?php
+}
+		]]></hook>
+		
+		
+		<hook id="vt_qr_get_posts"><![CDATA[
+// load information about medals when displaying topic
+$query['SELECT'] .= ',u.om_medals';
+		]]></hook>
+		
+		<hook id="vt_row_pre_display" priority="2"><![CDATA[
+// put medals below avatars or signatures
+// signatures must be turned on, otherwise medals will be displayed always below avatars
+
+if (!defined('OM_MEDALS_FUNCTIONS_LOADED'))
+	require $ext_info['path'].'/functions.php';
+
+// decode string like [1][2][3][4] to array of integers
+$om_medals_of_user = om_medals_decode_medal_string($cur_post['om_medals']);
+
+// build html code with medals
+if (!empty($cur_post)) {
+	$om_medals_html = '';
+	foreach ($om_medals_of_user as $cur_medal) {
+		$om_medals_html .= '<span class="om_medals-viewtopic '.($forum_config['o_om_medals_one_in_row'] == '1' ? 'om_medals-one-row' : '').'">'.om_medals_generate_medal_tag($cur_medal).'</span> ';
+	}
+}
+
+// append medals to signature
+if ($forum_config['o_signatures'] == '1' && $forum_config['o_om_medals_in_signature'] == '1') {
+
+	// Do signature parsing/caching
+	if (isset($forum_page['message']['signature']))
+		$forum_page['message']['signature'] .= '<div>'.$om_medals_html.'</div>';
+	else
+		$forum_page['message']['signature'] = '<div class="sig-content"><span class="sig-line"><!-- --></span>'.$om_medals_html.'</div>';
+
+// or put medals below avatar
+} else {
+	$forum_page['author_info']['om_medals'] = $om_medals_html;
+}
+		]]></hook>
+		
+		<hook id="he_new_section"><![CDATA[
+// write help about medals - list of medals with their description
+if ($section == 'om_medals')
+{
+	// load language file
+	if (!isset($lang_om_medals))
+	{
+		if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+			include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+		else
+			include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+	}
+
+	if (!defined('OM_MEDALS_FUNCTIONS_LOADED'))
+		require $ext_info['path'].'/functions.php';
+
+	// Display all the medals
+	om_medals_load_medals_cache();
+
+	($hook = get_hook('om_medals_help_pre_output')) ? eval($hook) : null;
+
+
+?>
+	<div class="main-subhead">
+		<h2 class="hn"><span><?php echo $lang_om_medals['Help about'] ?></span></h2>
+	</div>
+	<div class="main-content main-frm">
+		<div class="ct-box info-box">
+			<p><?php echo $lang_om_medals['Help info'] ?></p>
+		</div>
+
+<?php
+	if (empty($forum_om_medals)) {
+?>
+		<div class="mf-box"><span><?php echo $lang_om_medals['No medals definied'] ?></span></div>
+<?php
+	} else {
+		foreach ($forum_om_medals as $cur_medal)
+		{
+?>
+		<div class="ct-box help-box">
+			<a id="m<?php echo $cur_medal['id'] ?>"></a>
+			<h3 class="hn"><span><?php echo forum_htmlencode($cur_medal['name']) ?></span></h3>
+			<div class="entry-content">
+				<div class="om_medals-help"><?php
+					$tag = om_medals_generate_medal_tag($cur_medal['id']);
+					if ($tag == null)
+						echo $lang['No medal image'];
+					else
+						echo $tag;
+				?></div>
+				<div><?php echo empty($cur_medal['desc']) ? '-' : $cur_medal['desc'] ?></div>
+			</div>
+<?php ($hook = get_hook('om_medals_help_medal_info_end')) ? eval($hook) : null; ?>
+		</div>
+<?php
+		}
+	}
+
+	($hook = get_hook('om_medals_help_output_end')) ? eval($hook) : null;
+
+?>
+	</div>
+<?php
+}
+		]]></hook>
+		
+		<hook id="ca_fn_generate_admin_menu_new_sublink"><![CDATA[
+// add link in admin's tab for editing medals
+if ($forum_user['g_id'] == FORUM_ADMIN && FORUM_PAGE_SECTION == 'start')
+{
+	// load language pack
+	if (!isset($lang_om_medals))
+	{
+		if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+			include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+		else
+			include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+	}
+
+	$forum_page['admin_submenu']['om_medals'] = '<li class="'.((FORUM_PAGE == 'admin-om_medals') ? 'active' : 'normal').((empty($forum_page['admin_submenu'])) ? ' first-item' : '').'"><a href="'.forum_link($forum_url['om_medals_admin']).'">'.$lang_om_medals['Medals'].'</a></li>';
+}
+		]]></hook>
+		
+		<!-- -->
+		<hook id="co_modify_url_scheme"><![CDATA[
+// load links in valid mode
+if ($forum_config['o_sef'] != 'Default' && file_exists($ext_info['path'].'/url/'.$forum_config['o_sef'].'.php'))
+	require $ext_info['path'].'/url/'.$forum_config['o_sef'].'.php';
+else
+	require $ext_info['path'].'/url/Default.php';
+		]]></hook>
+		
+		<!-- -->
+		<hook id="re_rewrite_rules"><![CDATA[
+// rewrite rules for different links modes
+$forum_rewrite_rules['/^profile[\/_-]?om_medals[\/_-]?([0-9]+)(\.html?|\/)?$/i'] = 'profile.php?section=om_medals&id=$1';
+$forum_rewrite_rules['/^profile[\/_-]?om_medals[\/_-]?assign[\/_-]?([0-9]+)(\.html?|\/)?$/i'] = 'profile.php?section=om_medals&action=om_medals_assign&id=$1';
+$forum_rewrite_rules['/^help[\/_-]?om_medals(\.html?|\/)?$/i'] = 'help.php?section=om_medals';
+
+($hook = get_hook('om_medals_after_rewrite_rules_set')) ? eval($hook) : null;
+		]]></hook>
+
+	</hooks>
+</extension>

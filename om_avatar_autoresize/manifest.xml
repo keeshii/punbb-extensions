@@ -1,0 +1,250 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+
+<extension engine="1.0">
+	<id>om_avatar_autoresize</id>
+	<title>Automatically resize the avatars</title>
+	<version>0.0.1</version>
+	<description>Automatically resize avatars uploaded by users.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+	
+       <install><![CDATA[
+		// Add extension options to the config table
+		$om_avatar_autoresize_config = array(
+			'o_om_avatar_autoresize_ratio' => '0',
+			'o_om_avatar_autoresize_choice' => '0',
+			'o_om_avatar_autoresize_default' => '1',
+		);
+
+		foreach ($om_avatar_autoresize_config as $conf_name => $conf_value)
+		{
+			forum_config_add($conf_name, $conf_value);
+		}
+	]]></install>
+	
+	<uninstall><![CDATA[
+		// Delete extension options from the config
+		forum_config_remove(array(
+			'o_om_avatar_autoresize_ratio',
+			'o_om_avatar_autoresize_choice',
+			'o_om_avatar_autoresize_default',
+		));
+	]]></uninstall>
+	
+	
+	<hooks>
+		<!-- -->
+		<hook id="pf_change_details_avatar_modify_size"><![CDATA[
+// scalling the image
+// terrible long var names, but i am trying to prevent possible conflicts with orher extensions
+// Now check the width, height, type
+list($width, $height, $type,) = @getimagesize($avatar_tmp_file);
+
+// check if scalling is needed
+if (
+	// resizing is enabled in options
+	(
+		// user has no choice - avatar must be scaled
+		($forum_config['o_om_avatar_autoresize_choice'] != '1' && $forum_config['o_om_avatar_autoresize_default'] == '1') ||
+		// user has choise and has turned on this feature
+		($forum_config['o_om_avatar_autoresize_choice'] == '1' && isset($_POST['om_avatar_autoresize']) && $_POST['om_avatar_autoresize'] == '1')
+	) &&
+	
+	// non-empty forum properties
+	!empty($forum_config['o_avatars_width']) && !empty($forum_config['o_avatars_height']) &&
+	
+	// image has positive resolution (loaded correctly)
+	!empty($width) && !empty($height) &&
+	(
+		// don't keep aspect ratio and at least one dimension is different than in settings
+		($forum_config['o_om_avatar_autoresize_ratio'] != '1' && ($width != $forum_config['o_avatars_width'] || $height != $forum_config['o_avatars_height'])) ||
+		
+		// keep aspect ratio and all dimensions are different than in settings
+		($forum_config['o_om_avatar_autoresize_ratio'] == '1' && (
+			($width != $forum_config['o_avatars_width'] || $height > $forum_config['o_avatars_height']) &&
+			($width > $forum_config['o_avatars_width'] || $height != $forum_config['o_avatars_height']))
+		)
+	)
+) {
+	// scaling should be done,
+	// let's do some scalling :)
+
+	// calculate new size
+	if ($forum_config['o_om_avatar_autoresize_ratio']) {
+		$om_avatar_autoresize_wdelta = $forum_config['o_avatars_width'] - $width;
+		$om_avatar_autoresize_hdelta = $forum_config['o_avatars_height'] - $height;
+		
+		if ($om_avatar_autoresize_wdelta < $om_avatar_autoresize_hdelta) {
+			$om_avatar_autoresize_width = intval($forum_config['o_avatars_width']);
+			$om_avatar_autoresize_height = intval(($om_avatar_autoresize_width * $height) / $width);
+		} else {
+			$om_avatar_autoresize_height = intval($forum_config['o_avatars_height']);
+			$om_avatar_autoresize_width = intval(($om_avatar_autoresize_height * $width) / $height);
+		}
+	} else {
+		$om_avatar_autoresize_width = intval($forum_config['o_avatars_width']);
+		$om_avatar_autoresize_height = intval($forum_config['o_avatars_height']);
+	}
+	
+	// image 1000x1 px may be scalled to 100x0 px and cause error
+	// change this to 100x1 px.
+	if ($om_avatar_autoresize_width <= 0) {
+		$om_avatar_autoresize_width = 1;
+	}
+	
+	if ($om_avatar_autoresize_height <= 0) {
+		$om_avatar_autoresize_height = 1;
+	}
+	
+	// load the image to memory
+	switch($type) {
+	case IMAGETYPE_GIF:
+		$om_avatar_autoresize_img = @imagecreatefromgif($avatar_tmp_file);
+		break;
+	case IMAGETYPE_JPEG:
+		$om_avatar_autoresize_img = @imagecreatefromjpeg($avatar_tmp_file);
+		break;
+	case IMAGETYPE_PNG:
+		$om_avatar_autoresize_img = @imagecreatefrompng($avatar_tmp_file);
+		break;
+	default:
+		$om_avatar_autoresize_img = false;
+	}
+	
+	// if loading was successfull
+	if ($om_avatar_autoresize_img !== false) {
+	
+		// create a new image
+		$om_avatar_autoresize_new_img = @imagecreatetruecolor($om_avatar_autoresize_width, $om_avatar_autoresize_height);
+
+		// fill image with transparent color
+		if ($type == IMAGETYPE_PNG) {
+			@imagealphablending($om_avatar_autoresize_new_img, false);
+			@imagesavealpha($om_avatar_autoresize_new_img, true);
+			$om_avatar_autoresize_transp = @imagecolorallocatealpha($om_avatar_autoresize_new_img, 255, 255, 255, 127);
+			@imagefilledrectangle($om_avatar_autoresize_new_img, 0, 0, $om_avatar_autoresize_width, $om_avatar_autoresize_height, $om_avatar_autoresize_transp);
+		} elseif ($type == IMAGETYPE_GIF) {
+			$om_avatar_autoresize_transp = @imagecolortransparent($om_avatar_autoresize_img);
+
+			// If we have a specific transparent color
+			if ($om_avatar_autoresize_transp >= 0) {
+				// Get the original image's transparent color's RGB values
+				$om_avatar_autoresize_transp_col = @imagecolorsforindex($om_avatar_autoresize_img, $om_avatar_autoresize_transp_col);
+				// Allocate the same color in the new image resource
+				$om_avatar_autoresize_transp = @imagecolorallocate(
+					$om_avatar_autoresize_new_img,
+					$om_avatar_autoresize_transp_col['red'],
+					$om_avatar_autoresize_transp_col['green'],
+					$om_avatar_autoresize_transp_col['blue']);
+
+				// Completely fill the background of the new image with allocated color.
+				@imagefill($om_avatar_autoresize_new_img, 0, 0, $om_avatar_autoresize_transp);
+				// Set the background color for new image to transparent
+				@imagecolortransparent($om_avatar_autoresize_new_img, $om_avatar_autoresize_transp);
+			}
+
+			@imagecolortransparent ($om_avatar_autoresize_new_img, $om_avatar_autoresize_transp);
+		}
+
+		// copy its scalled version
+		@imagecopyresampled(
+			$om_avatar_autoresize_new_img,
+			$om_avatar_autoresize_img,
+			0, 0, 0, 0,
+			$om_avatar_autoresize_width, $om_avatar_autoresize_height,
+			$width, $height);
+
+		// save the new image to disk
+		switch($type) {
+		case IMAGETYPE_GIF:
+			@imagegif($om_avatar_autoresize_new_img, $avatar_tmp_file);
+			break;
+		case IMAGETYPE_JPEG:
+			@imagejpeg($om_avatar_autoresize_new_img, $avatar_tmp_file, 95);
+			break;
+		case IMAGETYPE_PNG:
+			@imagepng($om_avatar_autoresize_new_img, $avatar_tmp_file);
+			break;
+		}
+	}
+	// and we are done :)
+	// for now this function is not reporting any errors,
+	// it will just leave to image unchanged on the disk.
+	// this might be changed in the future
+}
+ 		]]></hook>
+
+		<hook id="pf_change_details_avatar_pre_fieldset_end"><![CDATA[
+if ($forum_config['o_om_avatar_autoresize_choice'] == '1') {
+
+	if (!isset($lang_om_avatar_autoresize))
+	{
+		if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+			include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+		else
+			include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+	}
+
+?>
+	<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+		<div class="sf-box checkbox">
+			<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="om_avatar_autoresize" value="1"<?php if ((isset($_POST['form_sent']) ? $_POST['om_avatar_autoresize'] : $forum_config['o_om_avatar_autoresize_default']) == '1') echo ' checked="checked"' ?> /></span>
+			<label for="fld<?php echo $forum_page['fld_count'] ?>"><span><?php echo $lang_om_avatar_autoresize['Scale avatar'] ?></span> <?php echo $lang_om_avatar_autoresize['Scale avatar info'] ?></label>
+		</div>
+	</div>
+<?php
+}
+		]]></hook>
+		
+		<hook id="aop_features_pre_avatars_fieldset_end"><![CDATA[
+// load language file
+if (!isset($lang_om_avatar_autoresize))
+{
+	if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+		include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+	else
+		include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+}
+?>
+<fieldset class="mf-set set<?php echo ++$forum_page['item_count'] ?>">
+	<legend><span><?php echo $lang_om_avatar_autoresize['Autoresize settings'] ?></span></legend>
+	<div class="mf-box">
+		<div class="mf-item">
+			<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_avatar_autoresize_ratio]" value="1"<?php if ($forum_config['o_om_avatar_autoresize_ratio'] == '1') echo ' checked="checked"' ?> /></span>
+			<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_avatar_autoresize['Keep aspect ratio'] ?></label>
+		</div>
+	</div>
+	<div class="mf-box">
+		<div class="mf-item">
+			<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_avatar_autoresize_choice]" value="1"<?php if ($forum_config['o_om_avatar_autoresize_choice'] == '1') echo ' checked="checked"' ?> /></span>
+			<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_avatar_autoresize['Users can disable scalling'] ?></label>
+		</div>
+	</div>
+	<div class="mf-box">
+		<div class="mf-item">
+			<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_avatar_autoresize_default]" value="1"<?php if ($forum_config['o_om_avatar_autoresize_default'] == '1') echo ' checked="checked"' ?> /></span>
+			<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_avatar_autoresize['Scale avatars by default'] ?></label>
+		</div>
+	</div>
+</fieldset>
+<?php
+		]]></hook> 
+
+		<hook id="aop_features_validation"><![CDATA[
+// validate forum settings
+if (!isset($form['om_avatar_autoresize_ratio']) || $form['om_avatar_autoresize_ratio'] != '1')
+	$form['om_avatar_autoresize_ratio'] = '0';
+
+if (!isset($form['om_avatar_autoresize_choice']) || $form['om_avatar_autoresize_choice'] != '1')
+	$form['om_avatar_autoresize_choice'] = '0';
+
+if (!isset($form['om_avatar_autoresize_default']) || $form['om_avatar_autoresize_default'] != '1')
+	$form['om_avatar_autoresize_default'] = '0';
+		]]></hook>
+
+	</hooks>
+</extension>

@@ -1,0 +1,172 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<extension engine="1.0">
+	<id>om_profile_about</id>
+	<title>Profile description</title>
+	<version>0.0.1</version>
+	<description>Adds a description field into users profile.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<install><![CDATA[
+		if(!$forum_db->field_exists('users', 'om_profile_about'))
+			$forum_db->add_field('users', 'om_profile_about', 'TEXT', true);
+			
+		// Add extension options to the config table
+		$om_images_config = array(
+			'p_om_profile_about_all_caps' => '1',
+			'p_om_profile_about_length' => '400',
+			'p_om_profile_about_lines' => '10',
+		);
+
+		foreach ($om_images_config as $conf_name => $conf_value) {
+			forum_config_add($conf_name, $conf_value);
+		}
+	]]></install>
+
+	<uninstall><![CDATA[
+		$forum_db->drop_field('users', 'om_profile_about');
+		
+		// Delete extension options from the config
+		forum_config_remove(array(
+			'p_om_profile_about_all_caps',
+			'p_om_profile_about_length',
+			'p_om_profile_about_lines',
+		));
+	]]></uninstall>
+
+
+	<hooks>
+		<hook id="pf_change_details_identity_contact_fieldset_end"><![CDATA[
+			// profile settings
+			if (!isset($lang_om_profile_about)) {
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+			
+			?>
+			<fieldset class="frm-group group<?php echo ++$forum_page['group_count'] ?>">
+				<legend class="group-legend"><strong><?php echo $lang_om_profile_about['Description legend'] ?></strong></legend>
+<?php ($hook = get_hook('om_profile_about_pre_field')) ? eval($hook) : null; ?>
+				<div class="txt-set set<?php echo ++$forum_page['item_count'] ?>">
+					<div class="txt-box textarea">
+						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_profile_about['Description label'] ?></span></label>
+						<div class="txt-input"><span class="fld-input"><textarea id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_profile_about]" rows="3" cols="55"><?php echo(isset($form['om_profile_about']) ? forum_htmlencode($form['om_profile_about']) : forum_htmlencode($user['om_profile_about'])) ?></textarea></span></div>
+					</div>
+				</div>
+<?php ($hook = get_hook('om_profile_about_fieldset_end')) ? eval($hook) : null; ?>
+			</fieldset>
+			<?php
+		]]></hook>
+
+		<hook id="pf_change_details_identity_validation"><![CDATA[
+			// extract value from post array and validate
+			if (!isset($lang_om_profile_about)) {
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+			
+			$form['om_profile_about'] = isset($_POST['form']) && isset($_POST['form']['om_profile_about']) ? forum_trim(forum_linebreaks($_POST['form']['om_profile_about'])) : '';
+			
+			// Validate description in the same way as signature
+			if (utf8_strlen($form['om_profile_about']) > $forum_config['p_om_profile_about_length'])
+				$errors[] = sprintf($lang_om_profile_about['Description too long'], forum_number_format($forum_config['p_om_profile_about_length']), forum_number_format(utf8_strlen($form['om_profile_about']) - $forum_config['p_om_profile_about_length']));
+			if (substr_count($form['om_profile_about'], "\n") > ($forum_config['p_om_profile_about_lines'] - 1))
+				$errors[] = sprintf($lang_om_profile_about['Description too many lines'], forum_number_format($forum_config['p_om_profile_about_lines']));
+
+			if ($form['om_profile_about'] != '' && $forum_config['p_om_profile_about_all_caps'] == '0' && check_is_all_caps($form['om_profile_about']) && !$forum_user['is_admmod'])
+				$form['om_profile_about'] = utf8_ucwords(utf8_strtolower($form['om_profile_about']));
+		]]></hook>
+
+		<hook id="pf_view_details_pre_header_load, pf_change_details_about_pre_header_load"><![CDATA[
+			// decode description
+			if ($user['om_profile_about'] !='') {
+				$forum_page['om_profile_about'] = forum_htmlencode(($forum_config['o_censoring'] == '1') ? censor_words($user['om_profile_about']) : $user['om_profile_about']);
+				
+				// Deal with newlines, tabs and multiple spaces
+				$pattern = array("\n", "\t", '  ', '  ');
+				$replace = array('<br />', '&nbsp; &nbsp; ', '&nbsp; ', ' &nbsp;');
+				$forum_page['om_profile_about'] = str_replace($pattern, $replace, $forum_page['om_profile_about']);
+			}
+		]]></hook>
+		
+		<hook id="pf_view_details_pre_user_sig_info, pf_change_details_about_pre_user_sig_info"><![CDATA[
+			// display description on about page
+			if (isset($forum_page['om_profile_about'])):
+				if (!isset($lang_om_profile_about)) {
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+			?>
+			<div class="ct-set data-set set<?php echo ++$forum_page['item_count'] ?>">
+				<div class="ct-box data-box">
+					<h4 class="ct-legend hn"><span><?php echo $lang_om_profile_about['Current description'] ?></span></h4>
+					<div class="sig-demo"><?php echo $forum_page['om_profile_about'] ?></div>
+				</div>
+			</div>
+			<?php endif;
+		]]></hook>
+		
+		
+		<hook id="aop_features_sig_fieldset_end"><![CDATA[
+			// admin settings
+			if (!isset($lang_om_profile_about)) {
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+
+			$forum_page['group_count'] = $forum_page['item_count'] = 0;
+			
+			?>
+			<div class="content-head">
+				<h2 class="hn"><span><?php echo $lang_om_profile_about['Features desc'] ?></span></h2>
+			</div>
+<?php ($hook = get_hook('om_profile_about_aop_fieldset')) ? eval($hook) : null; ?>
+			<fieldset class="frm-group group<?php echo ++$forum_page['group_count'] ?>">
+				<legend class="group-legend"><span><?php echo $lang_om_profile_about['Features desc legend'] ?></span></legend>
+				<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+					<div class="sf-box checkbox">
+						<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_profile_about_all_caps]" value="1"<?php if ($forum_config['p_om_profile_about_all_caps'] == '1') echo ' checked="checked"' ?> /></span>
+						<label for="fld<?php echo $forum_page['fld_count'] ?>"><span><?php echo $lang_om_profile_about['Allow capitals group'] ?></span> <?php echo $lang_om_profile_about['All caps desc label'] ?></label>
+					</div>
+				</div>
+				<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+					<div class="sf-box text">
+						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_profile_about['Max desc length label'] ?></span></label><br />
+						<span class="fld-input"><input type="number" id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_profile_about_length]" size="5" maxlength="5" value="<?php echo $forum_config['p_om_profile_about_length'] ?>" /></span>
+					</div>
+				</div>
+				<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+					<div class="sf-box text">
+						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_profile_about['Max desc lines label'] ?></span></label><br />
+						<span class="fld-input"><input type="number" id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_profile_about_lines]" size="5" maxlength="3" value="<?php echo $forum_config['p_om_profile_about_lines'] ?>" /></span>
+					</div>
+				</div>
+<?php ($hook = get_hook('om_profile_about_aop_pre_fieldset_end')) ? eval($hook) : null; ?>
+			</fieldset>
+			<?php
+		]]></hook>
+		
+		<hook id="aop_features_validation"><![CDATA[
+			// admin settings field validation
+			if (!isset($form['om_profile_about_all_caps']) || $form['om_profile_about_all_caps'] != '1') $form['om_profile_about_all_caps'] = '0';
+
+			$form['om_profile_about_length'] = intval($form['om_profile_about_length']);
+			$form['om_profile_about_lines'] = intval($form['om_profile_about_lines']);
+		]]></hook>
+		
+		
+		
+	</hooks>
+</extension>

@@ -1,0 +1,26 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<extension engine="1.0">
+	<id>om_lastpost_silentedit</id>
+	<title>Last post silent edit</title>
+	<version>0.0.2</version>
+	<description>Edition of the last post always will be silent.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<hooks>
+		<hook id="ed_qr_get_post_info"><![CDATA[
+			$query['SELECT'] .= ',t.last_post_id';
+		]]></hook>
+		
+		
+		<hook id="ed_qr_update_post"><![CDATA[
+			if ($cur_post['last_post_id'] == $id) {
+				$query['SET'] = 'message=\''.$forum_db->escape($message).'\', hide_smilies=\''.$hide_smilies.'\'';
+			}
+		]]></hook>
+	</hooks>
+</extension>

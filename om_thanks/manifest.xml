@@ -1,0 +1,504 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<extension engine="1.0">
+	<id>om_thanks</id>
+	<title>Thanks</title>
+	<version>0.0.2</version>
+	<description>Say "thanks" below intresting posts.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<install>
+		$schema = array(
+			'FIELDS' => array(
+				'post_id' => array(
+					'datatype' => 'INT(10) UNSIGNED',
+					'allow_null' => false,
+					'default' => '0'
+				),
+				'user_id' => array(
+					'datatype' => 'INT(10) UNSIGNED',
+					'allow_null' => false,
+					'default' => '0'
+				),
+				'poster_id' => array(
+					'datatype' => 'INT(10) UNSIGNED',
+					'allow_null' => false,
+					'default' => '0'
+				)
+			),
+			'PRIMARY KEY' => array('post_id', 'user_id')
+		);
+		$forum_db->create_table('om_thanks', $schema);
+
+		if(!$forum_db->field_exists('posts', 'om_thanks_cache'))
+			$forum_db->add_field('posts', 'om_thanks_cache', 'TEXT', false, '');
+
+		if(!$forum_db->field_exists('users', 'om_thanks_count'))
+			$forum_db->add_field('users', 'om_thanks_count', 'INT', false, '0');
+
+		// Required from version 0.0.2
+		if(!$forum_db->field_exists('om_thanks', 'added'))
+			$forum_db->add_field('om_thanks', 'added', 'INT(10) UNSIGNED', false, '0');
+
+		// Add extension options to the config table
+		$om_images_config = array(
+			'o_om_thanks_show_profile' => '1', // true
+			'o_om_thanks_show_post' => '1', // true
+			'o_om_thanks_allow_take' => '1', // true
+			'o_om_thanks_max_thanks' => '50',
+		);
+
+		foreach ($om_images_config as $conf_name => $conf_value) {
+			forum_config_add($conf_name, $conf_value);
+		}
+	</install>
+
+	<uninstall><![CDATA[
+		$forum_db->drop_field('posts', 'om_thanks_cache');
+
+		$forum_db->drop_field('users', 'om_thanks_count');
+
+		$forum_db->drop_table('om_thanks');
+
+		// Delete extension options from the config
+		forum_config_remove(array(
+			'o_om_thanks_show_profile',
+			'o_om_thanks_show_post',
+			'o_om_thanks_allow_take',
+			'o_om_thanks_max_thanks',
+		));
+	]]></uninstall>
+
+	<hooks>
+		<hook id="vt_pre_header_load"><![CDATA[
+			// Incuding styles for om_thanks
+			if ($forum_user['style'] != 'Oxygen' && file_exists($ext_info['path'].'/css/'.$forum_user['style'].'/om_thanks.min.css'))
+				$forum_loader->add_css($ext_info['url'].'/css/'.$forum_user['style'].'/om_thanks.min.css', array('type' => 'url', 'media' => 'screen'));
+			else
+				$forum_loader->add_css($ext_info['url'].'/css/Oxygen/om_thanks.min.css', array('type' => 'url', 'media' => 'screen'));
+			
+			if (!isset($lang_om_thanks)) {
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+		]]></hook>
+
+		<hook id="vt_qr_get_posts"><![CDATA[
+			$query['SELECT'] .= ', p.om_thanks_cache, u.om_thanks_count';
+		]]></hook>
+
+		<hook id="vt_post_loop_start"><![CDATA[
+			if ($cur_post['om_thanks_cache']) {
+				$cur_post['om_thanks_cache'] = unserialize($cur_post['om_thanks_cache']);
+			} else {
+				$cur_post['om_thanks_cache'] = array();
+			}
+		]]></hook>
+
+		<hook id="vt_row_pre_post_actions_merge"><![CDATA[
+			if ($cur_post['poster_id'] > 1 && $cur_post['om_thanks_count'] > 0 && $forum_config['o_om_thanks_show_profile'] == '1')
+				$forum_page['author_info']['om_thanks_count'] = '<li><span>'.$lang_om_thanks['Thanks count'].': <strong>'.forum_number_format($cur_post['om_thanks_count']).'</strong></span></li>';
+
+			if (!$forum_user['is_guest'] && $cur_post['poster_id'] != $forum_user['id']) {
+				if (!array_key_exists($forum_user['id'], $cur_post['om_thanks_cache'])) {
+					$forum_page['author_info']['om_thanks'] = '<li><span><a href="'.forum_link($forum_url['om_thanks_add'], array($cur_post['id'], generate_form_token('om_thanks_add'.$cur_post['id'].$forum_user['id']))).'">'.$lang_om_thanks['Give thanks'].'</a></span></li>';
+				} elseif ($forum_config['o_om_thanks_allow_take'] == '1') {
+					$forum_page['author_info']['om_thanks'] = '<li><span><a href="'.forum_link($forum_url['om_thanks_del'], array($cur_post['id'], generate_form_token('om_thanks_del'.$cur_post['id'].$forum_user['id']))).'">'.$lang_om_thanks['Take thanks'].'</a></span></li>';
+				}
+			}
+		]]></hook>
+	
+		<hook id="vt_row_pre_display"><![CDATA[
+			// List of thankers
+			if ($cur_post['om_thanks_cache'] && $forum_config['o_om_thanks_show_post'] == '1')
+			{
+				$om_thanks_users = array();
+				$om_thanks_more = 0;
+				foreach ($cur_post['om_thanks_cache'] as $user_id => $username) {
+					$om_thanks_users[] = '<a href='.forum_link($forum_url['user'], $user_id).'>'.$username.'</a>';
+					
+					$om_thanks_more++;
+					if ($forum_config['o_om_thanks_max_thanks'] > 0 && $om_thanks_more >= $forum_config['o_om_thanks_max_thanks']) {
+						break;
+					}
+				}
+				$om_thanks_more = (count($cur_post['om_thanks_cache']) > $om_thanks_more ? count($cur_post['om_thanks_cache']) - $om_thanks_more : 0);
+
+				$forum_page['post_options']['om_thanks'] = '<p class="post-om_thanks">'.$lang_om_thanks['Thankers'].': '.implode(', ', $om_thanks_users)
+					.($om_thanks_more ? ' '.sprintf($lang_om_thanks['and more'], $om_thanks_more) : '').'</p>';
+			}
+		]]></hook>
+
+		<hook id="mi_new_action"><![CDATA[
+			if (isset($_GET['om_thanks_add']))
+			{
+				if ($forum_user['is_guest'])
+					message($lang_common['No permission']);
+
+				$post_id = intval($_GET['om_thanks_add']);
+				if ($post_id < 1)
+					message($lang_common['Bad request']);
+
+				// We validate the CSRF token. If it's set in POST and we're at this point, the token is valid.
+				// If it's in GET, we need to make sure it's valid.
+				if (!isset($_POST['csrf_token']) && (!isset($_GET['csrf_token']) || $_GET['csrf_token'] !== generate_form_token('om_thanks_add'.$post_id.$forum_user['id'])))
+					csrf_confirm_form();
+
+				// Get poster id
+				$query = array(
+					'SELECT'	=> 'p.poster_id',
+					'FROM'		=> 'posts AS p',
+					'WHERE'		=> 'id = '.$post_id
+				);
+				($hook = get_hook('om_thanks_fn_rebuild_cache_qr_get_poster')) ? eval($hook) : null;
+				$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
+				$poster_id = $forum_db->result($result);
+
+				// don't thank yourself
+				if ($poster_id == $forum_user['id'])
+					message($lang_common['Bad request']);
+
+				if (!isset($lang_om_thanks)) {
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+
+				// Fetch some info about the forum
+				$query = array(
+					'SELECT'	=> 'COUNT(t.post_id)',
+					'FROM'		=> 'om_thanks AS t',
+					'WHERE'		=> 't.post_id = '.$post_id.' AND t.user_id='.$forum_user['id'],
+				);
+
+				($hook = get_hook('mi_om_thanks_add_qr_get_count')) ? eval($hook) : null;
+				$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
+				$om_thanks_count = $forum_db->result($result);
+				if ($om_thanks_count)
+					message($lang_common['Bad request']);
+
+				$query = array(
+					'INSERT'	=> 'post_id, user_id, poster_id, added',
+					'INTO'		=> 'om_thanks',
+					'VALUES'	=> $post_id.', '.$forum_user['id'].', '.$poster_id.', '.time(),
+				);
+				($hook = get_hook('mi_om_thanks_add_qr_add_thanks')) ? eval($hook) : null;
+				$forum_db->query_build($query) or error(__FILE__, __LINE__);
+
+				if (!defined('OM_THANKS_FUNCTION_LOADED')) {
+					require $ext_info['path'] . '/functions.php';
+				}
+
+				om_thanks_rebuild_post_cache($post_id);
+
+				if ($poster_id > 1)
+					om_thanks_update_thanks_count($poster_id);
+
+				redirect(forum_link($forum_url['post'], $post_id), $lang_om_thanks['Thanks added']);
+			}
+
+			elseif (isset($_GET['om_thanks_del']))
+			{
+				if ($forum_config['o_om_thanks_allow_take'] != '1' || $forum_user['is_guest'])
+					message($lang_common['No permission']);
+
+				$post_id = intval($_GET['om_thanks_del']);
+				if ($post_id < 1)
+					message($lang_common['Bad request']);
+
+				// We validate the CSRF token. If it's set in POST and we're at this point, the token is valid.
+				// If it's in GET, we need to make sure it's valid.
+				if (!isset($_POST['csrf_token']) && (!isset($_GET['csrf_token']) || $_GET['csrf_token'] !== generate_form_token('om_thanks_del'.$post_id.$forum_user['id'])))
+					csrf_confirm_form();
+
+				// Get poster id
+				$query = array(
+					'SELECT'	=> 'p.poster_id',
+					'FROM'		=> 'posts AS p',
+					'WHERE'		=> 'id = '.$post_id
+				);
+				($hook = get_hook('om_thanks_fn_rebuild_cache_qr_get_poster')) ? eval($hook) : null;
+				$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
+				$poster_id = $forum_db->result($result);
+
+				// don't thank yourself
+				if ($poster_id == $forum_user['id'])
+					message($lang_common['Bad request']);
+
+				if (!isset($lang_om_thanks)) {
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+
+				$query = array(
+					'DELETE'	=> 'om_thanks',
+					'WHERE'		=> 'post_id = '.$post_id.' AND user_id='.$forum_user['id'],
+				);
+				$forum_db->query_build($query) or error(__FILE__, __LINE__);
+
+				if (!defined('OM_THANKS_FUNCTION_LOADED')) {
+					require $ext_info['path'] . '/functions.php';
+				}
+
+				om_thanks_rebuild_post_cache($post_id);
+
+				if ($poster_id > 1)
+					om_thanks_update_thanks_count($poster_id);
+
+				redirect(forum_link($forum_url['post'], $post_id), $lang_om_thanks['Thanks taken']);
+			}
+		]]></hook>
+
+		<hook id="pf_change_details_username_changed"><![CDATA[
+			// don't forget to update thanks when username changed
+			if (!defined('OM_THANKS_FUNCTION_LOADED'))
+				require $ext_info['path'] . '/functions.php';
+
+			om_thanks_rebuild_user_cache($id);
+		]]></hook>
+
+		<hook id="fn_delete_user_qr_delete_user"><![CDATA[
+			// don't forget to update thanks when deleting user
+			if (!defined('OM_THANKS_FUNCTION_LOADED'))
+				require $ext_info['path'] . '/functions.php';
+
+			om_thanks_delete_user($user_id);
+		]]></hook>
+
+		<hook id="mr_confirm_delete_posts_qr_delete_posts"><![CDATA[
+			// don't forget to remove thanks when deleting posts
+			if (!defined('OM_THANKS_FUNCTION_LOADED'))
+				require $ext_info['path'] . '/functions.php';
+
+			om_thanks_delete_post($posts);
+		]]></hook>
+		
+		<hook id="fn_delete_post_qr_delete_post"><![CDATA[
+			// don't forget to remove thanks when deleting posts
+			if (!defined('OM_THANKS_FUNCTION_LOADED'))
+				require $ext_info['path'] . '/functions.php';
+
+			om_thanks_delete_post($post_id);
+		]]></hook>
+		
+		<hook id="mr_confirm_delete_topics_qr_get_deleted_posts"><![CDATA[
+			// don't forget to remove thanks when deleting posts
+			if (!defined('OM_THANKS_FUNCTION_LOADED'))
+				require $ext_info['path'] . '/functions.php';
+
+			om_thanks_delete_topic($topics);
+		]]></hook>
+		
+		<hook id="ca_fn_prune_qr_prune_posts"><![CDATA[
+			// don't forget to remove thanks when deleting posts
+			if (!defined('OM_THANKS_FUNCTION_LOADED'))
+				require $ext_info['path'] . '/functions.php';
+
+			om_thanks_delete_topic($topic_ids);
+		]]></hook>
+		
+		<hook id="fn_delete_topic_qr_delete_topic_posts"><![CDATA[
+			// don't forget to remove thanks when deleting posts
+			if (!defined('OM_THANKS_FUNCTION_LOADED'))
+				require $ext_info['path'] . '/functions.php';
+
+			om_thanks_delete_topic($topic_id);
+		]]></hook>
+
+		<hook id="pf_change_details_about_pre_header_load, pf_view_details_pre_header_load"><![CDATA[
+			// don't forget to update thanks when username changed
+			if (!defined('OM_THANKS_FUNCTION_LOADED'))
+				require $ext_info['path'] . '/functions.php';
+
+			if (!isset($lang_om_thanks)) {
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+
+			if ($forum_config['o_om_thanks_show_profile'] == '1')
+				$forum_page['user_info']['om_thanks'] = '<li><span>'.$lang_om_thanks['Thanks count'].': <strong>'.forum_number_format($user['om_thanks_count']).'</strong></span></li>';
+
+			if ($forum_config['o_om_thanks_show_profile'] == '1' && $forum_user['g_search'] == '1') {
+				$forum_page['user_activity']['om_thanks'] = '<li><a href="'.forum_link($forum_url['search_om_thanks'], $id).'">'.sprintf($lang_om_thanks['View user thanks'], forum_htmlencode($user['username'])).'</a></li>';
+			}
+		]]></hook>
+
+		<hook id="aop_features_avatars_fieldset_end"><![CDATA[
+			// forum settings
+
+			// load language file
+			if (!isset($lang_om_thanks))
+			{
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+					
+			$forum_page['group_count'] = $forum_page['item_count'] = 0;
+?>
+			<div class="content-head">
+				<h2 class="hn"><span><?php echo $lang_om_thanks['Thanks settings'] ?></span></h2>
+			</div>
+			<fieldset class="frm-group group<?php echo ++$forum_page['group_count'] ?>">
+				<legend class="group-legend"><span><?php echo $lang_om_thanks['Features title'] ?></span></legend>
+
+
+				<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+					<div class="sf-box text">
+						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_thanks['Max thanks'] ?></span><small><?php echo $lang_om_thanks['Max thanks info'] ?></small></label><br />
+						<span class="fld-input"><input type="text" id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_thanks_max_thanks]" size="6" maxlength="6" value="<?php echo $forum_config['o_om_thanks_max_thanks'] ?>" /></span>
+					</div>
+				</div>
+
+				<fieldset class="mf-set set<?php echo ++$forum_page['item_count'] ?>">
+					<legend><span><?php echo $lang_om_thanks['Additional options'] ?></span></legend>
+					<div class="mf-box">
+						<div class="mf-item">
+							<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_thanks_show_profile]" value="1"<?php if ($forum_config['o_om_thanks_show_profile'] == '1') echo ' checked="checked"' ?> /></span>
+							<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_thanks['Show profile'] ?></label>
+						</div>
+					</div>
+					<div class="mf-box">
+						<div class="mf-item">
+							<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_thanks_show_post]" value="1"<?php if ($forum_config['o_om_thanks_show_post'] == '1') echo ' checked="checked"' ?> /></span>
+							<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_thanks['Show post'] ?></label>
+						</div>
+					</div>
+					<div class="mf-box">
+						<div class="mf-item">
+							<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_thanks_allow_take]" value="1"<?php if ($forum_config['o_om_thanks_allow_take'] == '1') echo ' checked="checked"' ?> /></span>
+							<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_thanks['Allow take'] ?></label>
+						</div>
+					</div>
+				</fieldset>
+<?php ($hook = get_hook('om_thanks_aop_fieldset_end')) ? eval($hook) : null; ?>
+			</fieldset>
+			<?php
+		]]></hook>
+	
+		<hook id="sf_fn_no_search_results_start"><![CDATA[
+			if ($action == 'om_thanks') {
+				if (!isset($lang_om_thanks)) {
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+				message($lang_om_thanks['No user posts'], $forum_page['search_again'], $lang_search['Posts by user']);
+				return true;
+			}
+		]]></hook>
+
+		<hook id="aop_features_validation"><![CDATA[
+			// validate forum settings
+			$form['om_thanks_max_thanks'] = (!isset($form['om_thanks_max_thanks']) || (int) $form['om_thanks_max_thanks'] <= 0) ? '0' : (string)(int) $form['om_thanks_max_thanks'];
+
+			if (!isset($form['om_thanks_show_profile']) || $form['om_thanks_show_profile'] != '1')
+				$form['om_thanks_show_profile'] = '0';
+
+			if (!isset($form['om_thanks_show_post']) || $form['om_thanks_show_post'] != '1')
+				$form['om_thanks_show_post'] = '0';
+
+			if (!isset($form['om_thanks_allow_take']) || $form['om_thanks_allow_take'] != '1')
+				$form['om_thanks_allow_take'] = '0';
+
+			($hook = get_hook('om_thanks_aop_validation_end')) ? eval($hook) : null;
+		]]></hook>
+
+		<hook id="sf_fn_validate_actions_start"><![CDATA[
+			// add om_thanks to valid search actions
+			$valid_actions[] = 'om_thanks';
+		]]></hook>
+
+		<hook id="se_additional_quicksearch_variables"><![CDATA[
+			// default value for om_thanks search = one day
+			if ($action == 'om_thanks') {
+				$value = isset($_GET['user_id']) ? intval($_GET['user_id']) : 0;
+				if ($value < 2)
+					message($lang_common['Bad request']);
+			}
+		]]></hook>
+
+		<hook id="sf_fn_generate_action_search_query_end"><![CDATA[
+			// generate_action_search_query
+			// show all posts made by our friends in the last day
+			if ($action == 'om_thanks') {
+				$query = array(
+					'SELECT'	=> 'DISTINCT p.id AS pid, p.poster AS pposter, p.posted AS pposted, p.poster_id, p.message, p.hide_smilies, t.id AS tid, t.poster, t.subject, t.first_post_id, t.posted, t.last_post, t.last_post_id, t.last_poster, t.num_replies, t.forum_id, f.forum_name',
+					'FROM'		=> 'posts AS p',
+					'JOINS'		=> array(
+						array(
+							'INNER JOIN'	=> 'topics AS t',
+							'ON'			=> 't.id=p.topic_id'
+						),
+						array(
+							'INNER JOIN'	=> 'forums AS f',
+							'ON'			=> 'f.id=t.forum_id'
+						),
+						array(
+							'LEFT JOIN'		=> 'forum_perms AS fp',
+							'ON'			=> '(fp.forum_id=f.id AND fp.group_id='.$forum_user['g_id'].')'
+						),
+						array(
+							'INNER JOIN'		=> 'om_thanks AS ot',
+							'ON'			=> 'p.id=ot.post_id',
+						)
+					),
+					'WHERE'		=> '(fp.read_forum IS NULL OR fp.read_forum=1) AND ot.poster_id='.$value,
+					'ORDER BY'	=> 'pposted DESC'
+				);
+
+				$url_type = $forum_url['search_om_thanks'];
+				$search_id = $value;
+				$show_as = 'posts';
+				($hook = get_hook('om_thanks_generate_action_qr_search')) ? eval($hook) : null;
+			}
+		]]></hook>
+
+		<hook id="sf_fn_generate_search_crumbs_start"><![CDATA[
+			if ($action == 'om_thanks') {
+				if (!isset($lang_om_thanks)) {
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+
+				$forum_page['crumbs'][] = sprintf($lang_om_thanks['Thanks by'], $search_set[0]['pposter']);
+				$forum_page['items_info'] = generate_items_info($lang_search['Posts found'], ($forum_page['start_from'] + 1), $num_hits);
+				$forum_page['main_head_options']['user_posts'] = '<span'.(empty($forum_page['main_head_options']) ? ' class="first-item"' : '').'><a href="'.forum_link($forum_url['search_user_posts'], $search_id).'">'.sprintf($lang_search['Posts by'], forum_htmlencode($search_set[0]['poster'])).'</a></span>';
+				$forum_page['main_head_options']['defined_search'] = '<span'.(empty($forum_page['main_head_options']) ? ' class="first-item"' : '').'><a href="'.forum_link($forum_url['search']).'">'.$lang_search['User defined search'].'</a></span>';
+				return true;
+			}
+		]]></hook>
+
+		<hook id="co_modify_url_scheme"><![CDATA[
+			if ($forum_config['o_sef'] != 'Default' && file_exists($ext_info['path'].'/url/'.$forum_config['o_sef'].'.php'))
+				require $ext_info['path'].'/url/'.$forum_config['o_sef'].'.php';
+			else
+				require $ext_info['path'].'/url/Default.php';
+
+		]]></hook>
+
+		<hook id="re_rewrite_rules"><![CDATA[
+			$forum_rewrite_rules['/^om_thanks_(add|del)[\/_-]?([0-9]+)[\/_-]?([a-z0-9]+)?(\.html?|\/)?$/i'] = 'misc.php?om_thanks_$1=$2&csrf_token=$3';
+			$forum_rewrite_rules['/^search[\/_-]?(om_thanks)[\/_-]([0-9]+)(\.html?|\/)?$/i'] = 'search.php?action=om_thanks&user_id=$2';
+			$forum_rewrite_rules['/^search[\/_-]?(om_thanks)[\/_-]([0-9]+)[\/_-]p(age)?[\/_-]?([0-9]+)(\.html?|\/)?$/i'] = 'search.php?action=om_thanks&user_id=$2&p=$4';
+
+			($hook = get_hook('om_thanks_after_rewrite_rules_set')) ? eval($hook) : null;
+		]]></hook>
+
+	</hooks>
+</extension>

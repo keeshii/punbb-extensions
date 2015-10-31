@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<extension engine="1.0">
+	<id>om_sort_by</id>
+	<title>Sorting topics</title>
+	<version>1.4.2.01</version>
+	<description>Add option to sort topics alphabetically.</description>
+	<author>om</author>
+	<minversion>1.4.0</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+	
+	<install><![CDATA[
+		if($forum_db->field_exists('topics', 'edited'))
+			$forum_db->drop_field('topics', 'edited');
+	]]></install>
+
+	<uninstall><![CDATA[
+	]]></uninstall>
+
+	<hooks>
+		<hook id="afo_edit_forum_modify_sort_by"><![CDATA[
+			if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+				include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+			else
+				include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			?>
+			<option value="3"<?php if ($cur_forum['sort_by'] == '3') echo ' selected="selected"' ?>><?php echo $lang_om_sort_by['Sort alphabetical'] ?></option>
+			<?php
+		]]></hook>
+
+		<hook id="vt_qr_get_topics_id, vf_qr_get_topics"><![CDATA[
+			if ($cur_forum['sort_by'] == 3)
+				$query['ORDER BY'] = 't.sticky DESC, t.subject ASC';
+		]]></hook>
+	</hooks>
+</extension>

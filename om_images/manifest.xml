@@ -1,0 +1,351 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<!--
+/**
+ * Automaticaly download images from posts to local server.
+ *
+ * @package om_images
+ * @author keeshii
+ */
+-->
+
+<extension engine="1.0">
+	<id>om_images</id>
+	<title>Simple image backup</title>
+	<version>1.4.2.06</version>
+	<description>Automaticaly download images from posts to local server.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<note type="install" timing="pre">Server must have write access into 'img' folder inside extension. Otherwise download will fail.</note>
+
+	<note type="uninstall" timing="pre">After uninstall posts will still point to img folder of this extension. Keep this folder on the server otherwise you will break the links.</note>
+
+	<install><![CDATA[
+		if(!$forum_db->field_exists('posts', 'om_images_dir'))
+			$forum_db->add_field('posts', 'om_images_dir', 'VARCHAR(20)', false, '');
+		
+		// Add extension options to the config table
+		$om_images_config = array(
+			'o_om_images_width' => '0', // unlimited
+			'o_om_images_height' => '0', // unlimited
+			'o_om_images_size' => '307200', // 300 kiB
+			'o_om_images_choice' => '1',
+			'o_om_images_default' => '1',
+			'o_om_images_url' => '0',
+		);
+
+		foreach ($om_images_config as $conf_name => $conf_value)
+		{
+			forum_config_add($conf_name, $conf_value);
+		}
+	]]></install>
+
+	<uninstall><![CDATA[
+		$forum_db->drop_field('posts', 'om_images_dir');
+	
+		// Delete extension options from the config
+		forum_config_remove(array(
+			'o_om_images_width',
+			'o_om_images_height',
+			'o_om_images_size',
+			'o_om_images_choice',
+			'o_om_images_default',
+			'o_om_images_url',
+		));
+	]]></uninstall>
+
+	<hooks>
+		
+		<hook id="po_end_validation"><![CDATA[
+			// if feature is forces, then enable it
+			if ($forum_config['o_om_images_choice'] != '1') {
+				$om_images = $forum_config['o_om_images_default'] == '1' ? 1 : 0;
+			} else {
+			// otherwise check if user has enabled it.
+				$om_images = isset($_POST['om_images']) ? 1 : 0;			
+			}
+		
+			// download obrazkow, on any problems fill errors[]
+			$om_images_dir = null;
+
+			if ((!isset($_POST['preview']) || !$_POST['preview']) && $om_images == 1 && empty($errors)) {
+
+				// load language file
+				if (!isset($lang_om_images))
+				{
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+
+				if (!defined('OM_IMAGES_FUNCTION_LOADED'))
+					require $ext_info['path'] . '/functions.php';
+
+				// generate the new temporary directory
+				$om_images_dir = om_images_generate_dir();
+
+				// download images
+				$om_images_new_message = om_images_do_replace($om_images_links, $message, $om_images_dir);
+				om_images_download($om_images_links, $om_images_dir);
+
+				// if no errors, then replace message
+				if (empty($errors)) {
+					$message = $om_images_new_message;
+				}
+			}
+		]]></hook>
+		
+		<hook id="po_pre_add_post, po_pre_add_topic"><![CDATA[
+			$post_info['om_images_dir'] = $om_images_dir;
+		]]></hook>
+				
+		<hook id="po_pre_optional_fieldset"><![CDATA[
+			// load language file
+			if (!isset($lang_om_images))
+			{
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+
+			// display checkbox if user can disable the feature
+			if ($forum_config['o_om_images_choice'] == '1') {
+				if ((!isset($_POST['preview']) || !$_POST['preview']) && $forum_config['o_om_images_default'] == '1') {
+					$_POST['om_images'] = '1';
+				}
+
+				$forum_page['checkboxes']['om_images'] = '<div class="mf-item"><span class="fld-input"><input type="checkbox" id="fld'.(++$forum_page['fld_count']).'" name="om_images" value="1"'.(isset($_POST['om_images']) ? ' checked="checked"' : '').' /></span> <label for="fld'.$forum_page['fld_count'].'">'.$lang_om_images['Save images'].'</label></div>'; 
+			}
+		]]></hook>
+		
+		<!-- adding post -->
+		<hook id="fn_add_post_qr_add_post, fn_add_topic_qr_add_topic_post"><![CDATA[
+			$query['INSERT'] .= ', om_images_dir';
+			$query['VALUES'] .= ', \''.$post_info['om_images_dir'].'\'';
+		]]></hook>
+		
+		
+		<hook id="ed_qr_get_post_info"><![CDATA[
+			$query['SELECT'] .= ', p.om_images_dir';
+		]]></hook>
+		
+		<hook id="ed_end_validation"><![CDATA[
+			// if feature is forces, then enable it
+			if ($forum_config['o_om_images_choice'] != '1') {
+				$om_images = $forum_config['o_om_images_default'] == '1' ? 1 : 0;
+			} else {
+			// otherwise check if user has enabled it.
+				$om_images = isset($_POST['om_images']) ? 1 : 0;			
+			}
+
+			// download obrazkow, on any problems fill errors[]
+			$om_images_dir = $cur_post['om_images_dir'];
+
+			if ((!isset($_POST['preview']) || !$_POST['preview']) && $om_images == 0) {
+
+				if (!defined('OM_IMAGES_FUNCTION_LOADED'))
+					require $ext_info['path'] . '/functions.php';
+
+				if (!empty($om_images_dir)) {
+					om_images_rmdir(OM_IMAGES_EXT_ROOT . '/img/' . $om_images_dir);
+				}
+
+				$om_images_dir = '';
+			}
+
+			if ((!isset($_POST['preview']) || !$_POST['preview']) && $om_images == 1) {
+
+				// load language file
+				if (!isset($lang_om_images))
+				{
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+
+				if (!defined('OM_IMAGES_FUNCTION_LOADED'))
+					require $ext_info['path'] . '/functions.php';
+
+				// generate the new temporary directory if not exists
+				if (empty($om_images_dir)) {
+					$om_images_dir = om_images_generate_dir();
+				}
+
+				// download images
+				$om_images_new_message = om_images_do_replace($om_images_links, $message, $om_images_dir);
+				om_images_download($om_images_links, $om_images_dir);
+
+				// if no problems, replace the message content
+				if (empty($errors)) {
+					$message = $om_images_new_message;
+				}
+			}
+		]]></hook>
+		
+		<hook id="ed_qr_update_post"><![CDATA[
+			// adding new field to posts table
+			// posts can change their id, and nearly everything.
+			// the only option is to remember what directory they are using
+			$query['SET'] .= ', om_images_dir=\''.$om_images_dir.'\'';
+		]]></hook>
+		
+		
+		<hook id="ed_pre_checkbox_display"><![CDATA[
+			// load language file
+			if (!isset($lang_om_images))
+			{
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+
+			// display checkbox if user can disable the feature
+			if ($forum_config['o_om_images_choice'] == '1') {
+				if ((!isset($_POST['preview']) || !$_POST['preview']) && !empty($cur_post['om_images_dir']))
+					$_POST['om_images'] = '1';
+			
+				$forum_page['checkboxes']['om_images'] = '<div class="mf-item"><span class="fld-input"><input type="checkbox" id="fld'.(++$forum_page['fld_count']).'" name="om_images" value="1"'.(isset($_POST['om_images']) ? ' checked="checked"' : '').' /></span> <label for="fld'.$forum_page['fld_count'].'">'.$lang_om_images['Save images'].'</label></div>'; 
+			}
+		]]></hook>
+		
+		
+		
+		
+		<hook id="mr_confirm_delete_posts_qr_delete_posts"><![CDATA[
+			// don't forget to remove images when deleting posts
+			if (!defined('OM_IMAGES_FUNCTION_LOADED'))
+				require $ext_info['path'] . '/functions.php';
+
+			om_images_delete_posts($posts);
+		]]></hook>
+		
+		<hook id="fn_delete_post_qr_delete_post"><![CDATA[
+			// don't forget to remove images when deleting posts
+			if (!defined('OM_IMAGES_FUNCTION_LOADED'))
+				require $ext_info['path'] . '/functions.php';
+
+			om_images_delete_posts($post_id);
+		]]></hook>
+		
+		<hook id="mr_confirm_delete_topics_qr_get_deleted_posts"><![CDATA[
+			// don't forget to remove images when deleting posts
+			if (!defined('OM_IMAGES_FUNCTION_LOADED'))
+				require $ext_info['path'] . '/functions.php';
+
+			om_images_delete_topics($topics);
+		]]></hook>
+		
+		<hook id="ca_fn_prune_qr_prune_posts"><![CDATA[
+			// don't forget to remove images when deleting posts
+			if (!defined('OM_IMAGES_FUNCTION_LOADED'))
+				require $ext_info['path'] . '/functions.php';
+
+			om_images_delete_topics($topic_ids);
+		]]></hook>
+		
+		<hook id="fn_delete_topic_qr_delete_topic_posts"><![CDATA[
+			// don't forget to remove images when deleting posts
+			if (!defined('OM_IMAGES_FUNCTION_LOADED'))
+				require $ext_info['path'] . '/functions.php';
+
+			om_images_delete_topics($topic_id);
+		]]></hook>
+
+
+
+		<hook id="aop_features_avatars_fieldset_end"><![CDATA[
+// forum settings
+
+// load language file
+if (!isset($lang_om_images))
+{
+	if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+		include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+	else
+		include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+}
+		
+$forum_page['group_count'] = $forum_page['item_count'] = 0;
+?>
+
+<div class="content-head">
+	<h2 class="hn"><span><?php echo $lang_om_images['Save images settings'] ?></span></h2>
+</div>
+<fieldset class="frm-group group<?php echo ++$forum_page['group_count'] ?>">
+	<legend class="group-legend"><span><?php echo $lang_om_images['Features title'] ?></span></legend>
+
+
+	<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+		<div class="sf-box text">
+			<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_images['Max width'] ?></span><small><?php echo $lang_om_images['Max width info'] ?></small></label><br />
+			<span class="fld-input"><input type="text" id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_images_width]" size="6" maxlength="6" value="<?php echo $forum_config['o_om_images_width'] ?>" /></span>
+		</div>
+	</div>
+	<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+		<div class="sf-box text">
+			<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_images['Max height'] ?></span><small><?php echo $lang_om_images['Max height info'] ?></small></label><br />
+			<span class="fld-input"><input type="text" id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_images_height]" size="6" maxlength="6" value="<?php echo $forum_config['o_om_images_height'] ?>" /></span>
+		</div>
+	</div>
+	<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+		<div class="sf-box text">
+			<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_images['Max size'] ?></span><small><?php echo $lang_om_images['Max size info'] ?></small></label><br />
+			<span class="fld-input"><input type="text" id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_images_size]" size="6" maxlength="6" value="<?php echo $forum_config['o_om_images_size'] ?>" /></span>
+		</div>
+	</div>
+
+	<fieldset class="mf-set set<?php echo ++$forum_page['item_count'] ?>">
+		<legend><span><?php echo $lang_om_images['Additional options'] ?></span></legend>
+		<div class="mf-box">
+			<div class="mf-item">
+				<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_images_choice]" value="1"<?php if ($forum_config['o_om_images_choice'] == '1') echo ' checked="checked"' ?> /></span>
+				<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_images['Allow users'] ?></label>
+			</div>
+		</div>
+		<div class="mf-box">
+			<div class="mf-item">
+				<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_images_default]" value="1"<?php if ($forum_config['o_om_images_default'] == '1') echo ' checked="checked"' ?> /></span>
+				<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_images['By default'] ?></label>
+			</div>
+		</div>
+		<div class="mf-box">
+			<div class="mf-item">
+				<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_images_url]" value="1"<?php if ($forum_config['o_om_images_url'] == '1') echo ' checked="checked"' ?> /></span>
+				<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_images['Apply to url tags'] ?></label>
+			</div>
+		</div>
+	</fieldset>
+
+<?php ($hook = get_hook('om_images_aop_fieldset_end')) ? eval($hook) : null; ?>
+</fieldset>
+<?php
+		]]></hook>
+
+		<hook id="aop_features_validation"><![CDATA[
+// validate forum settings
+$form['om_images_width'] = (!isset($form['om_images_width']) || (int) $form['om_images_width'] <= 0) ? '0' : (string)(int) $form['om_images_width'];
+$form['om_images_height'] = (!isset($form['om_images_height']) || (int) $form['om_images_height'] <= 0) ? '0' : (string)(int) $form['om_images_height'];
+$form['om_images_size'] = (!isset($form['om_images_size']) || (int) $form['om_images_size'] <= 0) ? '0' : (string)(int) $form['om_images_size'];
+
+if (!isset($form['om_images_choice']) || $form['om_images_choice'] != '1')
+	$form['om_images_choice'] = '0';
+
+if (!isset($form['om_images_default']) || $form['om_images_default'] != '1')
+	$form['om_images_default'] = '0';
+
+if (!isset($form['om_images_url']) || $form['om_images_url'] != '1')
+	$form['om_images_url'] = '0';
+
+($hook = get_hook('om_images_aop_validation_end')) ? eval($hook) : null;
+		]]></hook>
+
+	</hooks>
+</extension>

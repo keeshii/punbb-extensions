@@ -1,0 +1,545 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<!--
+/**
+ * Advance warning system based on points and rules.
+ *
+ * @copyright (C) 2008-2014 PunBB
+ * @license http://www.gnu.org/licenses/gpl.html GPL version 2 or higher
+ * @package om_warnings
+ * @author keeshii
+ */
+-->
+
+<extension engine="1.0">
+	<id>om_warnings</id>
+	<title>Warning system</title>
+	<version>0.0.2</version>
+	<description>Advance warning system based on points and rules.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<install><![CDATA[
+		$schema = array(
+			'FIELDS' => array(
+				'id' => array(
+					'datatype' => 'SERIAL',
+					'allow_null' => false
+				),
+				'points' => array(
+					'datatype' => 'INT(10)',
+					'allow_null' => false,
+					'default' => '0'
+				),
+				'restriction' => array(
+					'datatype' => 'VARCHAR(20)',
+					'allow_null' => false,
+					'default' => '\'none\''
+				),
+			),
+			'PRIMARY KEY'	=> array('id'),
+		);
+		$forum_db->create_table('om_warnings_levels', $schema);
+
+
+		$schema = array(
+			'FIELDS' => array(
+				'id' => array(
+					'datatype' => 'SERIAL',
+					'allow_null' => false
+				),
+				'warn_name' => array(
+					'datatype' => 'VARCHAR(200)',
+					'allow_null' => false,
+					'default' => '\'New warning type\''
+				),
+				'warn_desc' => array(
+					'datatype' => 'TEXT',
+					'allow_null' => true,
+				),
+				'points' => array(
+					'datatype' => 'INT(10)',
+					'allow_null' => false,
+					'default' => '0'
+				),
+				'expire' => array(
+					'datatype' => 'INT(10)',
+					'allow_null' => false,
+					'default' => '0'
+				),
+				'restriction' => array(
+					'datatype' => 'VARCHAR(20)',
+					'allow_null' => true,
+				),
+			),
+			'PRIMARY KEY'	=> array('id'),
+		);
+		$forum_db->create_table('om_warnings_types', $schema);
+
+		$schema = array(
+			'FIELDS' => array(
+				'id' => array(
+					'datatype' => 'SERIAL',
+					'allow_null' => false
+				),
+				'user_id' => array(
+					'datatype' => 'INT(10)',
+					'allow_null' => false,
+					'default' => '1'
+				),
+				'warn_id' => array(
+					'datatype' => 'INT(10)',
+					'allow_null' => false,
+					'default' => '0'
+				),
+				'post_id' => array(
+					'datatype' => 'INT(10)',
+					'allow_null' => true
+				),
+				'topic_id' => array(
+					'datatype' => 'INT(10)',
+					'allow_null' => true
+				),
+				'forum_id' => array(
+					'datatype' => 'INT(10)',
+					'allow_null' => true
+				),
+				'reporter' => array(
+					'datatype' => 'VARCHAR(200)',
+					'allow_null' => false,
+					'default' => '\'none\''
+				),
+				'reporter_id' => array(
+					'datatype' => 'INT(10)',
+					'allow_null' => false,
+					'default' => '0'
+				),
+				'expire_date' => array(
+					'datatype' => 'INT(10)',
+					'allow_null' => true,
+				),
+				'created' => array(
+					'datatype' => 'INT(10)',
+					'allow_null' => false,
+					'default' => '0'
+				),
+				'message' => array(
+					'datatype' => 'TEXT',
+					'allow_null' => true
+				),
+			),
+			'PRIMARY KEY'	=> array('id'),
+		);
+		$forum_db->create_table('om_warnings_reports', $schema);
+
+		if(!$forum_db->field_exists('users', 'om_warnings_expire'))
+			$forum_db->add_field('users', 'om_warnings_expire', 'INT', false, '0');
+		if(!$forum_db->field_exists('users', 'om_warnings_restrictions'))
+			$forum_db->add_field('users', 'om_warnings_restrictions', 'VARCHAR(400)', false, '');
+		if(!$forum_db->field_exists('groups', 'g_mod_om_warnings'))
+			$forum_db->add_field('groups', 'g_mod_om_warnings', 'TINYINT(1)', false, '1');
+
+		// Add extension options to the config table
+		$om_warnings_config = array(
+			'o_om_warnings_email' => '1',
+		);
+
+		foreach ($om_warnings_config as $conf_name => $conf_value)
+		{
+			forum_config_add($conf_name, $conf_value);
+		}
+
+		// update from 0.0.1
+		// o_om_warnings_moderator changed to group permission
+		if (defined('EXT_CUR_VERSION') && EXT_CUR_VERSION == '0.0.1' && isset($forum_config['o_om_warnings_moderator'])) {
+			forum_config_remove('o_om_warnings_moderator');
+		}
+	]]></install>
+
+	<uninstall><![CDATA[
+		$forum_db->drop_table('om_warnings_reports');
+		$forum_db->drop_table('om_warnings_types');
+		$forum_db->drop_table('om_warnings_levels');
+
+		$forum_db->drop_field('users', 'om_warnings_expire');
+		$forum_db->drop_field('users', 'om_warnings_restrictions');
+		$forum_db->drop_field('groups', 'g_mod_om_warnings');
+
+		// Delete extension options from the config
+		forum_config_remove(array(
+			'o_om_warnings_email',
+		));
+	]]></uninstall>
+
+	<hooks>
+		<hook id="ca_fn_generate_admin_menu_new_link"><![CDATA[
+			if ($forum_user['g_id'] == FORUM_ADMIN) {
+				if (!isset($lang_om_warnings))
+				{
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+		
+				$forum_page['admin_menu']['om_warnings'] = '<li class="'.((FORUM_PAGE_SECTION == 'om_warnings') ? 'active' : 'normal').((empty($forum_page['admin_menu'])) ? ' first-item' : '').'"><a href="'.forum_link($forum_url['om_warnings_list']).'"><span>'.$lang_om_warnings['Warnings'].'</span></a></li>';
+			}
+		]]></hook>
+
+		<hook id="ca_fn_generate_admin_menu_new_sublink"><![CDATA[
+			if (!isset($lang_om_warnings))
+			{
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+		
+
+			if ($forum_user['g_id'] != FORUM_ADMIN) {
+				if ($forum_user['g_moderator'] == '1' && $forum_user['g_mod_om_warnings'] == '1') {
+					$forum_page['admin_submenu']['list'] = '<li class="'.((FORUM_PAGE == 'admin-om_warnings_list') ? 'active' : 'normal').((empty($forum_page['admin_submenu'])) ? ' first-item' : '').'"><a href="'.forum_link($forum_url['om_warnings_list']).'">'.$lang_om_warnings['Warning list mod'].'</a></li>';
+				}
+			} else {
+				if (FORUM_PAGE_SECTION == 'om_warnings') {
+					$forum_page['admin_submenu']['list'] = '<li class="'.((FORUM_PAGE == 'admin-om_warnings_list') ? 'active' : 'normal').((empty($forum_page['admin_submenu'])) ? ' first-item' : '').'"><a href="'.forum_link($forum_url['om_warnings_list']).'">'.$lang_om_warnings['Warning list'].'</a></li>';
+					$forum_page['admin_submenu']['levels'] = '<li class="'.((FORUM_PAGE == 'admin-om_warnings_levels') ? 'active' : 'normal').((empty($forum_page['admin_submenu'])) ? ' first-item' : '').'"><a href="'.forum_link($forum_url['om_warnings_levels']).'">'.$lang_om_warnings['Warning levels'].'</a></li>';
+					$forum_page['admin_submenu']['types'] = '<li class="'.((FORUM_PAGE == 'admin-om_warnings_types') ? 'active' : 'normal').((empty($forum_page['admin_submenu'])) ? ' first-item' : '').'"><a href="'.forum_link($forum_url['om_warnings_types']).'">'.$lang_om_warnings['Warning types'].'</a></li>';
+				}
+			}
+		]]></hook>
+
+		<hook id="mi_new_action"><![CDATA[
+			// form to add, edit and delete warning types, levels (for admins only)
+			$section = isset($_GET['section']) ? $_GET['section'] : null;
+
+			if ($section == 'om_warnings_list') {
+				require $ext_info['path'] . '/list.php';
+			} else
+
+			if ($section == 'om_warnings_types') {
+				require $ext_info['path'] . '/types.php';
+			} else
+			
+			if ($section == 'om_warnings_levels') {
+				require $ext_info['path'] . '/levels.php';
+			}
+
+			if ($section == 'om_warnings_report') {
+				require $ext_info['path'] . '/report.php';
+			}
+		]]></hook>
+
+
+		<hook id="aop_features_pre_general_fieldset_end"><![CDATA[
+			// forum settings
+
+			// load language file
+			if (!isset($lang_om_warnings))
+			{
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+?>
+				<fieldset class="mf-set set<?php echo ++$forum_page['item_count'] ?>">
+					<legend><span><?php echo $lang_om_warnings['Warning settings'] ?></span></legend>
+					<div class="mf-box">
+						<div class="mf-item">
+							<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_warnings_email]" value="1"<?php if ($forum_config['o_om_warnings_email'] == '1') echo ' checked="checked"' ?> /></span>
+							<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_warnings['Send warning emails'] ?></label>
+						</div>
+					</div>
+				</fieldset>
+<?php ($hook = get_hook('om_warnings_aop_fieldset_end')) ? eval($hook) : null; ?>
+			</fieldset>
+			<?php
+		]]></hook>
+
+		<hook id="aop_features_validation"><![CDATA[
+			// validate forum settings
+
+			if (!isset($form['om_warnings_email']) || $form['om_warnings_email'] != '1')
+				$form['om_warnings_email'] = '0';
+
+			($hook = get_hook('om_warnings_aop_validation_end')) ? eval($hook) : null;
+		]]></hook>
+
+		<hook id="agr_add_edit_group_pre_mod_permissions_fieldset_end"><![CDATA[
+			if (!isset($lang_om_warnings))
+			{
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+?>
+							<div class="mf-item">
+								<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="mod_om_warnings" value="1"<?php if ($group['g_mod_om_warnings'] == '1') echo ' checked="checked"' ?> /></span>
+								<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_warnings['Allow mod warnings label'] ?></label>
+							</div>
+<?php
+		]]></hook>
+
+		<hook id="agr_add_edit_end_validation"><![CDATA[
+			$mod_om_warnings = $moderator == '1' && isset($_POST['mod_om_warnings']) && $_POST['mod_om_warnings'] == '1' ? '1' : '0';
+		]]></hook>
+
+		<hook id="agr_add_end_qr_add_group"><![CDATA[
+			$query['INSERT'] .= ', g_mod_om_warnings';
+			$query['VALUES'] .= ', '.$mod_om_warnings;
+		]]></hook>
+
+		<hook id="agr_edit_end_qr_update_group"><![CDATA[
+			$query['SET'] .= ', g_mod_om_warnings='.$mod_om_warnings;
+		]]></hook>
+
+		<hook id="vt_row_pre_post_ident_merge"><![CDATA[
+			if ($forum_user['g_moderator'] == '1' && $forum_user['g_mod_om_warnings'] == '1' || $forum_user['g_id'] == FORUM_ADMIN) {
+				// load language file
+				if (!isset($lang_om_warnings))
+				{
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+
+				$forum_page['post_actions']['om_warnings'] = '<span class="report-post'.(empty($forum_page['post_actions']) ? ' first-item' : '').'"><a href="'.forum_link($forum_url['om_warnings_report'], $cur_post['id']).'">'.$lang_om_warnings['Report'].'<span> '.$lang_topic['Post'].' '.forum_number_format($forum_page['start_from'] + $forum_page['item_count']).'</span></a></span>';
+			}
+		]]></hook>
+
+
+		<hook id="vt_row_pre_post_actions_merge"><![CDATA[
+			if ($forum_user['g_moderator'] == '1' && $forum_user['g_mod_om_warnings'] == '1' || $forum_user['g_id'] == FORUM_ADMIN) {
+				unset($forum_page['post_actions']['report']);
+			}
+		]]></hook>
+
+
+		<hook id="pf_change_details_new_section"><![CDATA[
+			// allow user to see his warnings
+			require $ext_info['path'] . '/profile.php';
+		]]></hook>
+
+
+		<hook id="pf_start"><![CDATA[
+			// we need warning language file in whole profiles
+			// load language file
+			if (!isset($lang_om_warnings))
+			{
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+		]]></hook>
+	
+		<hook id="fn_cookie_login_end"><![CDATA[
+			if ($forum_user['is_guest'] == false && $forum_user['om_warnings_expire'] != 0 && $forum_user['om_warnings_expire'] < time()) {
+				if (!defined('OM_WARNINGS_FUNCTIONS_LOADED'))
+					require $ext_info['path'].'/functions.php';
+
+				// refresh user warning cache
+				om_warnings_refresh_user($forum_user['id']);
+			}
+
+			if (empty($forum_user['om_warnings_restrictions'])) {
+				$forum_user['om_warnings_restrictions'] = array();
+			} else {
+				$forum_user['om_warnings_restrictions'] = explode(',', $forum_user['om_warnings_restrictions']);
+			}
+		]]></hook>
+
+		<hook id="pf_change_details_modify_main_menu"><![CDATA[
+			// add link to assigning warnings in the user profile
+			if ($forum_user['g_moderator'] == '1' && $forum_user['g_mod_om_warnings'] == '1' || $forum_user['g_id'] == FORUM_ADMIN || $forum_user['id'] == $id)
+				$forum_page['main_menu']['om_warnings'] = '<li'.(($section == 'om_warnings') ? ' class="active"' : '').'><a href="'.forum_link($forum_url['om_warnings_profile'], $id).'"><span>'.$lang_om_warnings['Section warnings'].'</span></a></li>';
+		]]></hook>
+
+
+		<hook id="fn_delete_user_qr_delete_user"><![CDATA[
+			// don't forget to delete warnings when deleting an user
+			$subquery = array(
+				'DELETE'	=> 'om_warnings_reports',
+				'WHERE'		=> 'user_id = '.$user_id
+			);
+			($hook = get_hook('om_warnings_qr_delete_user')) ? eval($hook) : null;
+			$forum_db->query_build($subquery) or error(__FILE__, __LINE__);
+		]]></hook>
+
+		<hook id="fn_check_bans_start"><![CDATA[
+			// get title for user
+			if ($forum_user['g_id'] != FORUM_ADMIN && in_array('om_banned', $forum_user['om_warnings_restrictions'])) {
+				// load language file
+				if (!isset($lang_om_warnings))
+				{
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+				
+				if (!empty($forum_user['om_warnings_expire'])) {
+					$ban_message = sprintf($lang_om_warnings['Ban message expire'], format_time($forum_user['om_warnings_expire'], 1, null, null, true));
+				} else {
+					$ban_message = sprintf($lang_om_warnings['Ban message never'], '<a href="mailto:'.forum_htmlencode($forum_config['o_admin_email']).'">'.forum_htmlencode($forum_config['o_admin_email']).'</a>');
+				}
+
+				message($ban_message);
+				return true;
+			}
+		]]></hook>
+
+		<hook id="po_pre_permission_check"><![CDATA[
+			if ($forum_user['g_id'] != FORUM_ADMIN && $tid && in_array('om_post', $forum_user['om_warnings_restrictions'])) {
+				message($lang_common['No permission']);
+			}
+
+			if ($forum_user['g_id'] != FORUM_ADMIN && $fid && in_array('om_topic', $forum_user['om_warnings_restrictions'])) {
+				message($lang_common['No permission']);
+			}
+		]]></hook>
+	
+		<hook id="ed_pre_permission_check"><![CDATA[
+			if (!$forum_page['is_admmod'] && in_array('om_edit', $forum_user['om_warnings_restrictions'])) {
+				message($lang_common['No permission']);
+			}
+		]]></hook>
+
+		<hook id="vt_modify_page_details"><![CDATA[
+			if ($forum_user['g_id'] != FORUM_ADMIN && in_array('om_post', $forum_user['om_warnings_restrictions'])) {
+				$forum_user['may_post'] = 0;
+			}
+
+			if (!$forum_page['is_admmod'] && in_array('om_edit', $forum_user['om_warnings_restrictions'])) {
+				$forum_user['g_edit_posts'] = '0';
+			}
+		]]></hook>
+
+		<hook id="vf_modify_page_details"><![CDATA[
+			if ($forum_user['g_id'] != FORUM_ADMIN && in_array('om_topic', $forum_user['om_warnings_restrictions'])) {
+				$forum_user['may_post'] = 0;
+			}
+		]]></hook>
+
+		<hook id="vt_qr_get_posts"><![CDATA[
+			$query['SELECT'] .= ', u.om_warnings_restrictions';
+		]]></hook>
+
+		<hook id="vt_post_loop_start"><![CDATA[
+			$om_warnings_restrictions = explode(',', $cur_post['om_warnings_restrictions']);
+			if (in_array('om_signature', $om_warnings_restrictions)) {
+				$cur_post['signature'] = '';
+			}
+
+			if (in_array('om_avatar', $om_warnings_restrictions)) {
+				$cur_post['avatar'] = FORUM_AVATAR_NONE;
+			}
+		]]></hook>
+
+		<hook id="pf_view_details_selected"><![CDATA[
+			$om_warnings_restrictions = explode(',', $user['om_warnings_restrictions']);
+
+			if (in_array('om_signature', $om_warnings_restrictions)) {
+				$parsed_signature = null;
+			}
+
+			if (in_array('om_avatar', $om_warnings_restrictions)) {
+				$user['avatar'] = FORUM_AVATAR_NONE;
+			}
+		]]></hook>
+
+
+		<hook id="he_new_section"><![CDATA[
+// write help about medals - list of medals with their description
+if ($section == 'om_warnings')
+{
+	// load language file
+	if (!isset($lang_om_warnings))
+	{
+		if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+			include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+		else
+			include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+	}
+
+	if (!defined('OM_WARNINGS_FUNCTIONS_LOADED'))
+		require $ext_info['path'].'/functions.php';
+
+	// Display all the medals
+	$om_warnings_types = om_warnings_get_warning_types();
+
+	($hook = get_hook('om_warnings_help_pre_output')) ? eval($hook) : null;
+?>
+	<div class="main-subhead">
+		<h2 class="hn"><span><?php echo $lang_om_warnings['Help about'] ?></span></h2>
+	</div>
+	<div class="main-content main-frm">
+		<div class="ct-box info-box">
+			<p><?php echo $lang_om_warnings['Help info'] ?></p>
+		</div>
+
+<?php
+	if (empty($om_warnings_types)) {
+?>
+		<div class="mf-box"><span><?php echo $lang_om_warnings['No warnings definied'] ?></span></div>
+<?php
+	} else {
+		foreach ($om_warnings_types as $cur_warning)
+		{
+?>
+		<div class="ct-box help-box">
+			<a id="m<?php echo $cur_warning['id'] ?>"></a>
+			<h3 class="hn"><span><?php echo forum_htmlencode($cur_warning['warn_name']) ?> <?php printf($lang_om_warnings['Num of points'], $cur_warning['points']) ?></span></h3>
+			<div class="entry-content">
+				<div><?php echo empty($cur_warning['warn_desc']) ? '-' : $cur_warning['warn_desc'] ?></div>
+			</div>
+<?php ($hook = get_hook('om_warnings_help_warning_info_end')) ? eval($hook) : null; ?>
+		</div>
+<?php
+		}
+	}
+
+	($hook = get_hook('om_warnings_help_output_end')) ? eval($hook) : null;
+
+?>
+	</div>
+<?php
+}
+		]]></hook>
+
+		<!-- -->
+		<hook id="co_modify_url_scheme"><![CDATA[
+			// load links in valid mode
+			if ($forum_config['o_sef'] != 'Default' && file_exists($ext_info['path'].'/url/'.$forum_config['o_sef'].'.php'))
+				require $ext_info['path'].'/url/'.$forum_config['o_sef'].'.php';
+			else
+				require $ext_info['path'].'/url/Default.php';
+		]]></hook>
+
+		<hook id="re_rewrite_rules"><![CDATA[
+			$forum_rewrite_rules['/^om_warnings[\/_-]?list(\.html?|\/)?$/i'] = 'misc.php?section=om_warnings_list';
+			$forum_rewrite_rules['/^om_warnings[\/_-]?list(\.html?|\/)?$/i'] = 'misc.php?section=om_warnings_list';
+			$forum_rewrite_rules['/^om_warnings[\/_-]?list\/(.*)\/([0-9]+)[\/_-]?([a-zA-Z]+)[\/_-]p(age)?[\/_-]?([0-9]+)(\.html?|\/)?$/i'] = 'misc.php?section=om_warnings_list&username=$1&show_expired=$2&sort_dir=$3&p=$5';
+			$forum_rewrite_rules['/^om_warnings[\/_-]?list\/(.*)\/([0-9]+)[\/_-]?([a-zA-Z]+)(\.html?|\/)?$/i'] = 'misc.php?section=om_warnings_list&username=$1&show_expired=$2&sort_dir=$3';
+			$forum_rewrite_rules['/^om_warnings[\/_-]?levels(\.html?|\/)?$/i'] = 'misc.php?section=om_warnings_levels';
+			$forum_rewrite_rules['/^om_warnings[\/_-]?levels[\/_-]?add(\.html?|\/)?$/i'] = 'misc.php?section=om_warnings_levels&action=add_level';
+			$forum_rewrite_rules['/^om_warnings[\/_-]?levels[\/_-]?del[\/_-]?([0-9]+)?(\.html?|\/)?$/i'] = 'misc.php?section=om_warnings_levels&del_level=$1';
+			$forum_rewrite_rules['/^om_warnings[\/_-]?types(\.html?|\/)?$/i'] = 'misc.php?section=om_warnings_types';
+			$forum_rewrite_rules['/^om_warnings[\/_-]?types[\/_-]?add(\.html?|\/)?$/i'] = 'misc.php?section=om_warnings_types&action=add_warning';
+			$forum_rewrite_rules['/^om_warnings[\/_-]?types[\/_-]?del[\/_-]?([0-9]+)?(\.html?|\/)?$/i'] = 'misc.php?section=om_warnings_types&del_warning=$1';
+			$forum_rewrite_rules['/^om_warnings[\/_-]?types[\/_-]?edit[\/_-]?([0-9]+)?(\.html?|\/)?$/i'] = 'misc.php?section=om_warnings_types&edit_warning=$1';
+			$forum_rewrite_rules['/^om_warnings[\/_-]?report[\/_-]?([0-9]+)?(\.html?|\/)?$/i'] = 'misc.php?section=om_warnings_report&post_id=$1';
+			$forum_rewrite_rules['/^om_warnings[\/_-]?user[\/_-]?([0-9]+)?(\.html?|\/)?$/i'] = 'misc.php?section=om_warnings_report&user_id=$1';
+			$forum_rewrite_rules['/^user[\/_-]?([0-9]+)[\/_-]?om_warnings(\.html?|\/)?$/i'] = 'profile.php?section=om_warnings&id=$1';
+			$forum_rewrite_rules['/^help[\/_-]?om_warnings(\.html?|\/)?$/i'] = 'help.php?section=om_warnings';
+
+			($hook = get_hook('om_warnings_after_rewrite_rules_set')) ? eval($hook) : null;
+		]]></hook>
+	</hooks>
+</extension>

@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<!--
+/**
+ * Changes bbcode editor to MarkItUp.
+ *
+ * @package om_markitup
+ */
+-->
+
+<extension engine="1.0">
+	<id>om_markitup</id>
+	<title>MarkItUp editor</title>
+	<version>1.4.2.03</version>
+	<description>Changes bbcode editor to MarkItUp.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<dependencies>
+		<dependency>pun_jquery</dependency>
+	</dependencies>
+	
+	<install><![CDATA[
+	]]></install>
+
+	<uninstall><![CDATA[
+	]]></uninstall>
+
+	<hooks>
+		<hook id="hd_head"><![CDATA[
+			if ((FORUM_PAGE == 'viewtopic' && $forum_config['o_quickpost']) || in_array(FORUM_PAGE, array('post', 'postedit', 'pun_pm-write', 'pun_pm-inbox', 'pun_pm-compose'))) {
+				$forum_loader->add_css($ext_info['url'].'/style/markitup.css', array('weight' => 90));
+				$forum_loader->add_js($ext_info['url'].'/js/jquery.markitup-1.1.13.js', array('type' => 'url', 'async' => false, 'weight' => 85));
+
+				global $smilies;
+
+				// needed for $smilies
+				if (!defined('FORUM_PARSER_LOADED'))
+					require FORUM_ROOT.'include/parser.php';
+
+				if (!isset($lang_om_markitup))
+				{
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+
+				require $ext_info['path'].'/bbcode_tags.php';
+				
+				$forum_loader->add_js('
+					$(document).ready(function() {
+						$("textarea[name=\'req_message\']").markItUp({nameSpace:"bbcode",markupSet:['.implode(',', $om_markitup_tags).']});
+					});', array('type' => 'inline', 'weight' => 90));
+			}
+		]]></hook>
+
+		<!-- size tag for bbcode -->
+		<hook id="ps_preparse_bbcode_start"><![CDATA[
+			// disallow size tag in signature
+		
+			if ($is_signature)
+			{
+				global $forum_user;
+
+				if (!isset($lang_om_markitup))
+				{
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+
+				if (preg_match('/\[size(=(.*))?\]/i', $text))
+					$errors[] = $lang_om_markitup['Signature size tag'];
+			}
+		]]></hook>
+		
+		<hook id="ps_preparse_bbcode_end"><![CDATA[
+			// remove empty tags, fe. [size=5][/size]
+		
+			if (($forum_config['p_sig_bbcode'] == '1' && $is_signature || $forum_config['p_message_bbcode'] == '1') && !$is_signature) {
+				// Remove empty tags
+				while ($new_text = preg_replace('/\[(size)(?:\=[^\]]*)?\]\[\/\1\]/', '', $text))
+				{
+					if ($new_text != $text)
+						$text = $new_text;
+					else
+						break;
+				}
+			}
+		]]></hook>
+		
+		<hook id="ps_preparse_tags_start"><![CDATA[
+			// add size tag to validator
+		
+			$tags[] = 'size';
+			$tags_opened[] = 'size';
+			$tags_closed[] = 'size';
+			$tags_inline[] = 'size';
+			$tags_quotes[] = 'size';
+			$tags_limit_bbcode['*'][] = 'size';
+			$tags_fix[] = 'size';
+		]]></hook>
+		
+		<hook id="ps_start"><![CDATA[
+			// change tag to html
+			function om_markitup_handle_size_tag($size, $text)
+			{
+				if (is_numeric($size)) {
+					$int_size = (int)$size;
+					if ($int_size >= 6)
+						$size = 'large';
+					else if ($int_size >= 4)
+						$size = 'big';
+				}
+			
+				$text = str_replace('\"', '"', $text);
+			
+				if ($size == 'big')
+					return "<span style=\"font-size: 1.5em\">$text</span>";
+			
+				if ($size == 'large')
+					return "<span style=\"font-size: 2.0em\">$text</span>";
+			
+				return "<span style=\"font-size: 1.0em\">$text</span>";
+			}
+		]]></hook>
+		
+		<hook id="ps_do_bbcode_replace"><![CDATA[
+			// replace pattern for size tag
+			$text = preg_replace_callback (
+				'#\[size=(normal|big|large|([0-9]*[1-9][0-9]*))\](.*?)\[/size\]#',
+				create_function('$matches','return om_markitup_handle_size_tag($matches[1], $matches[3]);'),
+				$text
+			);
+		]]></hook>
+
+	</hooks>
+</extension>

@@ -1,0 +1,348 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<extension engine="1.0">
+	<id>om_subforums</id>
+	<title>Simple subforums</title>
+	<version>0.0.4</version>
+	<description>Add simple subforums functionality.</description>
+	<author>om</author>
+	<minversion>1.4</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<install><![CDATA[
+// Add field for parent forum
+if (!$forum_db->field_exists('forums', 'om_subforums_parent_id')) {
+	$forum_db->add_field('forums', 'om_subforums_parent_id', 'INT(10) UNSIGNED', false, '0');
+}
+
+// update from 0.0.1
+// o_subforums_show_list changed name to o_om_subforums_show_mode
+// to keep compability with other extensions
+if (defined('EXT_CUR_VERSION') && EXT_CUR_VERSION == '0.0.1' && isset($forum_config['o_subforums_show_list'])) {
+	$conf_val = $forum_config['o_subforums_show_list'];
+	forum_config_remove('o_subforums_show_list');
+} else {
+	$conf_val = '0';
+}
+
+// update from 0.0.2
+// change column name from 'parent_id' to 'om_subforums_parent_id',
+// to protect from name collisions
+if (defined('EXT_CUR_VERSION') && EXT_CUR_VERSION <= '0.0.2') {
+	$query = array(
+		'UPDATE'	=> 'forums',
+		'SET'		=> 'om_subforums_parent_id = parent_id',
+	);
+	$forum_db->query_build($query) or error(__FILE__, __LINE__);
+
+	// Remove field for parent forum
+	if ($forum_db->field_exists('forums', 'parent_id')) {
+		$forum_db->drop_field('forums', 'parent_id');
+	}
+}
+
+// Show subforums (& their descriptions) on index.php
+forum_config_add('o_om_subforums_show_mode', $conf_val);
+	]]></install>
+
+	<uninstall>
+	<![CDATA[
+// Remove field for parent forum
+if ($forum_db->field_exists('forums', 'om_subforums_parent_id')) {
+	$forum_db->drop_field('forums', 'om_subforums_parent_id');
+}
+
+// Delete extension options from the config
+forum_config_remove('o_om_subforums_show_mode');
+	]]>
+	</uninstall>
+
+	<hooks>
+	
+	<hook id="aop_features_validation"><![CDATA[
+if (!isset($form['om_subforums_show_mode']) || !($form['om_subforums_show_mode'] == '1' || $form['om_subforums_show_mode'] == '2')) {
+	$form['om_subforums_show_mode'] = '0';
+}
+	]]></hook>
+
+	<hook id="aop_features_pre_general_fieldset_end"><![CDATA[
+// Show mode selection
+
+if (!isset($lang_om_subforums))
+{
+	if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+		include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+	else
+		include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+}
+
+echo '<div class="sf-set set' . (++$forum_page['item_count']) . '">'
+	. '<div class="sf-box checkbox">'
+	. '<span class="fld-input"><select id="fld' . (++$forum_page['fld_count']) .'" name="form[om_subforums_show_mode]">';
+if (!empty($lang_om_subforums['Show on index'])) {
+	echo '<option value="0"' . (($forum_config['o_om_subforums_show_mode'] == '0') ? ' selected="selected"' : '') . '>' . $lang_om_subforums['Show on index'] . '</option>';
+}
+if (!empty($lang_om_subforums['Show in topics'])) {
+	echo '<option value="1"' . (($forum_config['o_om_subforums_show_mode'] == '1') ? ' selected="selected"' : '') . '>' . $lang_om_subforums['Show in topics'] . '</option>';
+}
+if (!empty($lang_om_subforums['Show both'])) {
+	echo '<option value="2"' . (($forum_config['o_om_subforums_show_mode'] == '2') ? ' selected="selected"' : '') . '>' . $lang_om_subforums['Show both'] . '</option>';
+}
+echo '</select></span>'
+	. '<label for="fld'. $forum_page['fld_count'] . '"><span>' . $lang_om_subforums['Show mode label'] . '</span></label>'
+	. '</div></div>';
+	]]></hook>
+	
+
+	<hook id="hd_head"><![CDATA[
+// Load script for admin/forums page
+if (FORUM_PAGE == 'admin-forums') {
+	$forum_head['js_subforums'] = '<script type="text/javascript" src="' . $ext_info['url'] . '/admin_forums.js"></script>';
+}
+	]]></hook>
+
+	<hook id="in_qr_get_cats_and_forums"><![CDATA[
+// Hide subforums
+$query['WHERE'] = '(' . $query['WHERE'] . ') AND f.om_subforums_parent_id = 0';
+	]]></hook>
+
+	<hook id="in_normal_row_pre_item_title_merge"><![CDATA[
+// Are there new posts since our last visit in subforums?
+if (!$forum_user['is_guest'])
+{
+	// correct the last post listed in the index page
+	if(!defined('OM_SUBFORUMS_FUNCTIONS_LOADED'))
+		require $ext_info['path'].'/functions.php';
+
+	$om_subforums_fid_with_new_topics = om_subforums_get_new_topics($cur_forum['fid'], $tracked_topics, $new_topics);
+
+	if ($om_subforums_fid_with_new_topics) {
+		$forum_page['item_status']['new'] = 'new';
+		$forum_page['item_title']['status'] = '<small>'.sprintf($lang_index['Forum has new'], '<a href="'.forum_link($forum_url['search_new_results'], $om_subforums_fid_with_new_topics).'" title="'.$lang_index['New posts title'].'">'.$lang_index['Forum new posts'].'</a>').'</small>';
+	}
+}
+	]]></hook>
+
+	<hook id="in_normal_row_pre_item_subject_merge"><![CDATA[
+// correct the last post listed in the index page
+if(!defined('OM_SUBFORUMS_FUNCTIONS_LOADED'))
+	require $ext_info['path'].'/functions.php';
+
+om_subforums_update_forum_info($cur_forum);
+	]]></hook>
+
+	<hook id="in_row_pre_display"><![CDATA[
+// Show subforums on the index page
+// correct the last post listed in the index page
+if(!defined('OM_SUBFORUMS_FUNCTIONS_LOADED'))
+	require $ext_info['path'].'/functions.php';
+
+if (!isset($lang_om_subforums))
+{
+	if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+		include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+	else
+		include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+}
+
+if (($forum_config['o_om_subforums_show_mode'] == 0 || $forum_config['o_om_subforums_show_mode'] == 2) && count(om_subforums_get_subforums($cur_forum['fid'])) > 0) {
+	$forum_page['item_body']['subject']['subforums'] = '<p>'. $lang_om_subforums['Sections'] .om_subforums_get_plain($cur_forum['fid']). '</p>';
+}
+	]]></hook>
+	
+	<hook id="vf_main_output_start"><![CDATA[
+// Show forums in the topics
+if ($forum_config['o_om_subforums_show_mode'] > 0)
+	include $ext_info['path'] . '/vf.inc.php';
+	]]></hook>
+	
+	<hook id="afo_pre_new_forum_cat"><![CDATA[
+	// Add om_subforums_set_parent field when adding new forum
+	
+	echo '<div class="sf-set set' . (++$forum_page['item_count']) . '">' .
+		'<div class="sf-box select">' .
+		'<label for="fld' . (++$forum_page['fld_count']) . '"><span>' . $lang_om_subforums['Set parent forum label'] . '</span></label><br />' .
+		'<span class="fld-input"><select id="fld'. $forum_page['fld_count'] .'" name="om_subforums_set_parent" onchange="om_subforums_change_parent(\'add_to_cat\', \'om_subforums_set_parent\');">';
+
+	// -> Empty value
+	echo '<option value="0">' . $lang_om_subforums['Without parent'] . '</option>';
+
+	// -> Exist forums
+	$subforums_query = array(
+		'SELECT'	=> 'c.id AS cid, c.cat_name, f.id AS fid, f.forum_name',
+		'FROM'		=> 'categories AS c',
+		'JOINS'		=> array(
+			array(
+				'INNER JOIN'	=> 'forums AS f',
+				'ON'		=> 'c.id = f.cat_id'
+			)
+		),
+		'WHERE'		=> 'f.om_subforums_parent_id = 0',
+		'ORDER BY'	=> 'c.disp_position, c.id, f.disp_position'
+	);
+	$subforums_result = $forum_db->query_build($subforums_query) or error(__FILE__, __LINE__);
+
+	$parent_category = 0;
+	while ($cur_parent_forum = $forum_db->fetch_assoc($subforums_result)) {
+		if ($cur_parent_forum['cid'] != $parent_category) { // New category since last iteration
+			if ($parent_category) {
+				echo '</optgroup>';
+			}
+			echo '<optgroup label="' .forum_htmlencode($cur_parent_forum['cat_name']) . '">';
+			$parent_category = $cur_parent_forum['cid'];
+		}
+		echo '<option value="' . $cur_parent_forum['fid'] . '">' .forum_htmlencode($cur_parent_forum['forum_name']) . '</option>';
+	}
+
+	// -> End of field
+	echo '</optgroup></select></span></div></div>';
+	]]></hook>
+	
+	
+	<hook id="afo_edit_forum_pre_forum_cat"><![CDATA[
+// Add field into forum edit form
+
+echo '<div class="sf-set set' . (++$forum_page['item_count']) . '">' .
+	'<div class="sf-box select">' .
+	'<label for="fld' . (++$forum_page['fld_count']) . '"><span>' .
+	$lang_om_subforums['Set parent forum label'] . '</span></label><br />' .
+	'<span class="fld-input"><select id="fld' . $forum_page['fld_count'] .
+	'" name="om_subforums_parent_id" onchange="om_subforums_change_parent(\'cat_id\', \'om_subforums_parent_id\');">';
+
+// -> Empty value
+echo '<option value="0">' . $lang_om_subforums['Without parent'] . '</option>';
+
+// -> Exist forums
+$subforums_query = array(
+	'SELECT'   => 'c.id AS cid, c.cat_name, f.id AS fid, f.forum_name',
+	'FROM'     => 'categories AS c',
+	'JOINS'    => array(
+		array(
+			'INNER JOIN' => 'forums AS f',
+			'ON'         => 'c.id = f.cat_id'
+		)
+	),
+	'WHERE'    => 'f.om_subforums_parent_id = 0' . (isset($forum_id) ? " AND f.id!=$forum_id" : ''),
+	'ORDER BY' => 'c.disp_position, c.id, f.disp_position'
+);
+$subforums_result = $forum_db->query_build($subforums_query) or error(__FILE__, __LINE__);
+$parent_category = 0;
+while ($parent_forum = $forum_db->fetch_assoc($subforums_result)) {
+	if ($parent_forum['cid'] != $parent_category) { // New category since last iteration
+		if ($parent_category) {
+			echo '</optgroup>';
+		}
+		echo '<optgroup label="' . forum_htmlencode($parent_forum['cat_name']) . '">';
+		$parent_category = $parent_forum['cid'];
+	}
+	echo '<option value="' . $parent_forum['fid'] . '"' .
+		($parent_forum['fid'] == $cur_forum['om_subforums_parent_id'] ? ' selected="selected"' : '') .
+		($parent_forum['fid'] == $forum_id ? ' class="option-subforums-self"' : '') .
+		'>' . forum_htmlencode($parent_forum['forum_name']) . '</option>';
+}
+echo '</optgroup></select></span></div></div>';
+	]]></hook>
+
+	
+	<hook id="afo_start"><![CDATA[
+// load language file, it will be user for sure in add forum page.
+if (!isset($lang_om_subforums))
+{
+	if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+		include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+	else
+		include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+}
+
+if(!defined('OM_SUBFORUMS_FUNCTIONS_LOADED'))
+	require $ext_info['path'].'/functions.php';
+
+// Hack for empty category:
+// this code can't be in "afo_add_forum_form_submitted", because of bad request problem
+if (isset($_POST['add_forum']) && !empty($_POST['om_subforums_set_parent'])) {
+	$_POST['cat_id'] = $_POST['add_to_cat'] = om_subforums_get_forum_cat(intval($_POST['om_subforums_set_parent']));
+}
+	]]></hook>
+
+	<hook id="afo_add_forum_form_submitted"><![CDATA[
+// Set parent forum id
+// category is corrected in "afo_start"
+$om_subforums_parent_id = isset($_POST['om_subforums_set_parent']) ? intval($_POST['om_subforums_set_parent']) : 0;
+	]]></hook>
+
+	<hook id="afo_add_forum_qr_add_forum"><![CDATA[
+$query['INSERT'] .= ', om_subforums_parent_id';
+$query['VALUES'] .= ', ' . $om_subforums_parent_id;
+	]]></hook>
+
+	<hook id="afo_del_forum_qr_delete_forum"><![CDATA[
+// when deleting a forum, set all subforums->om_subforums_parent_id = 0
+$subforums_query = array(
+	'UPDATE' => 'forums',
+	'SET'    => 'om_subforums_parent_id = 0',
+	'WHERE'  => 'om_subforums_parent_id = ' .$forum_to_delete
+);
+$subforums_result = $forum_db->query_build($subforums_query) or error(__FILE__, __LINE__);
+	]]></hook>
+
+	
+	<hook id="afo_edit_forum_qr_get_forum_details"><![CDATA[
+// Get info about parent
+$query['SELECT'] .= ', f.om_subforums_parent_id';
+	]]></hook>
+
+
+	<hook id="afo_save_forum_form_submitted"><![CDATA[
+// get om_subforums_parent_id int value
+$om_subforums_parent_id = isset($_POST['om_subforums_parent_id']) ? intval($_POST['om_subforums_parent_id']) : 0;
+
+// if forum.om_subforums_parent_id refers to itself, then ignore it
+if ($om_subforums_parent_id == $forum_id) {
+	$om_subforums_parent_id = 0;
+}
+// set category same as parent
+if ($om_subforums_parent_id) {
+	$_POST['cat_id'] = om_subforums_get_forum_cat($om_subforums_parent_id);
+	$cat_id = intval($_POST['cat_id']);
+}
+	]]></hook>
+	
+
+	<hook id="afo_save_forum_qr_update_forum"><![CDATA[
+$query['SET'] .= ', om_subforums_parent_id = ' . $om_subforums_parent_id;
+	
+// update categories and om_subforums_parent_id of subforums
+$subforums_query = array(
+	'UPDATE' => 'forums',
+	'SET'    => 'cat_id = ' . $cat_id.
+		($om_subforums_parent_id == 0 ? ', om_subforums_parent_id = ' . $forum_id : ', om_subforums_parent_id = ' . $om_subforums_parent_id),
+	'WHERE'  => 'om_subforums_parent_id = ' . $forum_id,
+);
+$subforums_result = $forum_db->query_build($subforums_query) or error(__FILE__, __LINE__);
+	]]></hook>
+
+
+	<hook id="afo_qr_get_cats_and_forums, apr_qr_get_forum_list, pf_change_details_admin_qr_get_cats_and_forums, mr_move_topics_qr_get_target_forums, move_post_qr_get_forums_can_move_to, se_qr_get_cats_and_forums, ch_fn_generate_quickjump_cache_qr_get_cats_and_forums"><![CDATA[
+// fix sorting
+// corrects the order of forums - fe. on edit forums, search page, move topic, etc.
+
+if (!isset($lang_om_subforums))
+{
+	if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+		include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+	else
+		include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+}
+
+$query['JOINS'][] = array(
+	'LEFT JOIN' => 'forums AS f2',
+	'ON'        => 'f.om_subforums_parent_id = f2.id'
+	);
+$query['SELECT'] = str_replace('f.forum_name', 'CASE WHEN f2.id IS NULL THEN f.forum_name ELSE CONCAT(\''.$lang_om_subforums['---'].'\', f.forum_name) END as forum_name', $query['SELECT']);
+$query['SELECT'] .= ',CASE WHEN f2.id IS NULL THEN f.disp_position ELSE f2.disp_position END as parent_disp_position, CASE WHEN f2.id IS NULL THEN f.id ELSE f2.id END as om_subforums_parent_id';
+$query['ORDER BY'] = str_replace('f.disp_position', 'parent_disp_position, om_subforums_parent_id, f2.id IS NOT NULL, f.disp_position', $query['ORDER BY']);
+	]]></hook>
+
+	</hooks>
+</extension>

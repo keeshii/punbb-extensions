@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<!--
+/**
+ * Pun Move Posts extension main file
+ *
+ * @copyright Copyright (C) 2009-2012 PunBB, partially based on code copyright (C) 2009 FluxBB.org
+ * @license http://www.gnu.org/licenses/gpl.html GPL version 2 or higher
+ * @package om_move_posts
+ */
+-->
+
+<extension engine="1.0">
+	<id>om_move_posts</id>
+	<title>Om Move Posts</title>
+	<version>1.4.2.02</version>
+	<description>This extension allows moderators to move posts to other topics.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<install><![CDATA[
+		if(!$forum_db->field_exists('posts', 'om_move_posts'))
+			$forum_db->add_field('posts', 'om_move_posts', 'INT', false, '0');
+	]]></install>
+
+	<uninstall><![CDATA[
+		$forum_db->drop_field('posts', 'om_move_posts');
+	]]></uninstall>
+
+	<hooks>
+		<hook id="vt_qr_get_posts_id, vt_qr_get_posts"><![CDATA[
+			// now posts in topic are ordered by new column om_move_posts
+			$query['ORDER BY'] = 'p.om_move_posts,'.$query['ORDER BY'];
+		]]></hook>
+		
+		<hook id="vt_qr_get_post_info"><![CDATA[
+			// to determine the page number of a post,
+			// we need select new field: pid and om_move_posts 
+			$query['SELECT'] .= ',p.id as pid,p.om_move_posts';
+		]]></hook>
+		
+		<hook id="vt_qr_get_post_page"><![CDATA[
+			// replace old ordering by the creazy, new one :/
+			$query['WHERE'] = str_replace('p.posted<'.$topic_info['posted'],
+				'(p.om_move_posts<'.$topic_info['om_move_posts']. ' OR '.
+				'(p.om_move_posts='.$topic_info['om_move_posts']. ' AND '.
+				'p.id<'.$topic_info['pid'].'))',
+				$query['WHERE']);
+		]]></hook>
+		
+		<hook id="fn_add_topic_qr_add_topic_post, fn_add_post_qr_add_post"><![CDATA[
+			// get max move_posts from cache
+			if (!defined('OM_MOVE_POSTS_FUNCTIONS_LOADED'))
+				require $ext_info['path'] . '/functions.php';
+
+			$om_move_posts_max = om_move_posts_load_cache();
+
+			$query['INSERT'] .= ',om_move_posts';
+			$query['VALUES'] .= ', '.$om_move_posts_max;
+		]]></hook>
+		
+		<hook id="mr_post_actions_pre_mod_options"><![CDATA[
+			$forum_page['mod_options'] = array_merge(array('<span class="submit first-item"><input type="submit" name="move_posts" value="'.$lang_om_move_posts['Move selected'].'" /></span>'), $forum_page['mod_options']);
+		]]></hook>
+
+		<hook id="mr_post_actions_selected"><![CDATA[
+			require $ext_info['path'].'/move_posts.php';
+		]]></hook>
+
+		<hook id="mr_start"><![CDATA[
+			if ($forum_user['language'] != 'English' && file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+				require $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+			else
+				require $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+		]]></hook>
+	</hooks>
+</extension>

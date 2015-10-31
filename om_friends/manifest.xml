@@ -1,0 +1,254 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<extension engine="1.0">
+	<id>om_friends</id>
+	<title>Friends</title>
+	<version>0.0.2</version>
+	<description>Mark users as your friends.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<install>
+		$schema = array(
+			'FIELDS' => array(
+				'user_id' => array(
+					'datatype' => 'INT(10) UNSIGNED',
+					'allow_null' => false,
+					'default' => '0'
+				),
+				'friend_id' => array(
+					'datatype' => 'INT(10) UNSIGNED',
+					'allow_null' => false,
+					'default' => '0'
+				)
+			),
+			'PRIMARY KEY' => array('user_id', 'friend_id')
+		);
+		$forum_db->create_table('om_friends', $schema);
+	</install>
+
+	<uninstall><![CDATA[
+		$forum_db->drop_table('om_friends');
+	]]></uninstall>
+
+	<hooks>
+		<hook id="pf_change_details_about_pre_header_load, pf_view_details_pre_header_load"><![CDATA[
+			if (!defined('OM_FRIENDS_FUNCTION_LOADED')) {
+				require $ext_info['path'] . '/functions.php';
+			}
+
+			$forum_page['om_friends'] = array();
+			$om_friends_list = om_friends_get_friends($id);
+			foreach ($om_friends_list as $friend_id => $friend_name) {
+				$forum_page['om_friends'][] = '<a href="'. forum_link($forum_url['user'], $friend_id) .'">'. $friend_name .'</a>';
+			}
+
+			if (!$forum_user['is_guest'] && $forum_user['id'] != $id) {
+				// load language file
+				if (!isset($lang_om_friends)) {
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+
+				if (!om_friends_is_friend($id)) {
+					$forum_page['user_ident']['om_friends'] = '<li class="usertitle"><a href="'.forum_link($forum_url['om_friends_add'], $id).'">'. $lang_om_friends['Add friend'] .'</a></li>';
+				} else {
+					$forum_page['user_ident']['om_friends'] = '<li class="usertitle"><a href="'.forum_link($forum_url['om_friends_del'], $id).'">'. $lang_om_friends['Remove friend'] .'</a></li>';
+				}
+			}
+		]]></hook>
+
+		<hook id="pf_view_details_pre_user_sig_info, pf_change_details_about_pre_user_sig_info"><![CDATA[
+			// display description on about page
+			if (!empty($forum_page['om_friends'])):
+				// load language file
+				if (!isset($lang_om_friends)) {
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+			?>
+			<div class="ct-set data-set set<?php echo ++$forum_page['item_count'] ?>">
+				<div class="ct-box data-box">
+					<h4 class="ct-legend hn"><span><?php echo $lang_om_friends['User friends'] ?></span></h4>
+					<ul class="data-box">
+						<li>
+							<span><?php echo implode(', ', $forum_page['om_friends'])."\n" ?></span>
+						</li>
+					</ul>
+				</div>
+			</div>
+			<?php endif;
+		]]></hook>
+
+		<hook id="pf_new_action"><![CDATA[
+			// action add / del from friends
+			if ($action == 'om_friends_add' || $action == 'om_friends_del') {
+
+				if ($forum_user['is_guest'])
+					message($lang_common['Bad request']);
+
+				// load language file
+				if (!isset($lang_om_friends)) {
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+
+				if (!defined('OM_FRIENDS_FUNCTION_LOADED'))
+					require $ext_info['path'] . '/functions.php';
+			}
+
+
+			if ($action == 'om_friends_add') {
+				// Make sure we are allowed to delete this user's avatar
+				if ($forum_user['id'] == $id)
+					message($lang_om_friends['I like me']);
+
+				//if (!isset($_POST['csrf_token']) && (!isset($_GET['csrf_token']) || $_GET['csrf_token'] !== generate_form_token('om_friends_add_friend'.$id.$forum_user['id'])))
+				//	csrf_confirm_form();
+
+				($hook = get_hook('om_friends_add_pre_action')) ? eval($hook) : null;
+
+				if (om_friends_is_friend($id))
+					message($lang_om_friends['Already friend']);
+
+				om_friends_add_friend($id);
+
+				// Add flash message
+				$forum_flash->add_info($lang_om_friends['Added to friends redirect']);
+
+				($hook = get_hook('om_friends_add_pre_redirect')) ? eval($hook) : null;
+
+				redirect(forum_link($forum_url['user'], $id), $lang_om_friends['Added to friends redirect']);
+
+			} elseif ($action == 'om_friends_del') {
+				// Make sure we are allowed to delete this user's avatar
+				if ($forum_user['id'] == $id)
+					message($lang_om_friends['I hate me']);
+
+				($hook = get_hook('om_friends_del_pre_action')) ? eval($hook) : null;
+
+				if (!om_friends_is_friend($id))
+					message($lang_om_friends['Not friend']);
+
+				om_friends_del_friend($id);
+
+				// Add flash message
+				$forum_flash->add_info($lang_om_friends['Removed from friends redirect']);
+
+				($hook = get_hook('om_friends_add_pre_redirect')) ? eval($hook) : null;
+
+				redirect(forum_link($forum_url['user'], $id), $lang_om_friends['Removed from friends redirect']);
+			}
+		]]></hook>
+
+
+		<hook id="hd_visit_elements"><![CDATA[
+			if ($forum_user['g_read_board'] == '1' && $forum_user['g_search'] == '1')
+			{
+				// load language file
+				if (!isset($lang_om_friends)) {
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+
+				if (!$forum_user['is_guest'])
+					$visit_links['om_friends'] = '<span id="visit-new"'.(empty($visit_links) ? ' class="first-item"' : '').'><a href="'.forum_link($forum_url['search_om_friends']).'" title="'.$lang_om_friends['Search posts title'].'">'.$lang_om_friends['Search posts'].'</a></span>';
+			}
+		]]></hook>
+
+
+
+		<hook id="sf_fn_validate_actions_start"><![CDATA[
+			// add om_friends to valid search actions
+			$valid_actions[] = 'om_friends';
+		]]></hook>
+
+		<hook id="se_additional_quicksearch_variables"><![CDATA[
+			// default value for om_friend search = one day
+			if ($action == 'om_friends')
+				$value = (isset($_GET['value'])) ? intval($_GET['value']) : 86400;
+		]]></hook>
+
+		<hook id="sf_fn_generate_action_search_query_end"><![CDATA[
+			// generate_action_search_query
+			// show all posts made by our friends in the last day
+			if ($action == 'om_friends') {
+				$query = array(
+					'SELECT'	=> 'p.id AS pid, p.poster AS pposter, p.posted AS pposted, p.poster_id, p.message, p.hide_smilies, t.id AS tid, t.poster, t.subject, t.first_post_id, t.posted, t.last_post, t.last_post_id, t.last_poster, t.num_replies, t.forum_id, f.forum_name',
+					'FROM'		=> 'posts AS p',
+					'JOINS'		=> array(
+						array(
+							'INNER JOIN'	=> 'topics AS t',
+							'ON'			=> 't.id=p.topic_id'
+						),
+						array(
+							'INNER JOIN'	=> 'forums AS f',
+							'ON'			=> 'f.id=t.forum_id'
+						),
+						array(
+							'LEFT JOIN'		=> 'forum_perms AS fp',
+							'ON'			=> '(fp.forum_id=f.id AND fp.group_id='.$forum_user['g_id'].')'
+						),
+						array(
+							'INNER JOIN'		=> 'om_friends AS of',
+							'ON'			=> 'p.poster_id=of.friend_id',
+						)
+					),
+					'WHERE'		=> '(fp.read_forum IS NULL OR fp.read_forum=1) AND p.posted>'.(time() - $value).' AND of.user_id='.$forum_user['id'],
+					'ORDER BY'	=> 'pposted DESC'
+				);
+
+				$url_type = $forum_url['search_om_friends'];
+				$search_id = $value;
+				$show_as = 'posts';
+				($hook = get_hook('om_friends_generate_action_qr_search')) ? eval($hook) : null;
+			}
+		]]></hook>
+
+		<hook id="sf_fn_generate_search_crumbs_start"><![CDATA[
+			if ($action == 'om_friends') {
+
+				if (!isset($lang_om_friends)) {
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+
+				$forum_page['crumbs'][] = $lang_om_friends['Friend posts'];
+				$forum_page['items_info'] = generate_items_info($lang_search['Posts found'], ($forum_page['start_from'] + 1), $num_hits);
+				$forum_page['main_head_options']['defined_search'] = '<span'.(empty($forum_page['main_head_options']) ? ' class="first-item"' : '').'><a href="'.forum_link($forum_url['search']).'">'.$lang_search['User defined search'].'</a></span>';
+				return true;
+			}
+		]]></hook>
+
+		<hook id="co_modify_url_scheme"><![CDATA[
+			if ($forum_config['o_sef'] != 'Default' && file_exists($ext_info['path'].'/url/'.$forum_config['o_sef'].'.php'))
+				require $ext_info['path'].'/url/'.$forum_config['o_sef'].'.php';
+			else
+				require $ext_info['path'].'/url/Default.php';
+		]]></hook>
+
+		<hook id="re_rewrite_rules"><![CDATA[
+			$forum_rewrite_rules['/^om_friends[\/_-]?(add|del)?[\/_-]?([0-9]+)?(\.html?|\/)?$/i'] = 'profile.php?id=$2&action=om_friends_$1';
+			$forum_rewrite_rules['/^search[\/_-]?(om_friends)(\.html?|\/)?$/i'] = 'search.php?action=om_friends';
+			$forum_rewrite_rules['/^search[\/_-]?(om_friends)[\/_-]p(age)?[\/_-]?([0-9]+)(\.html?|\/)?$/i'] = 'search.php?action=om_friends&p=$3';
+			$forum_rewrite_rules['/^search[\/_-]?(om_friends)[\/_-]([0-9]+)(\.html?|\/)?$/i'] = 'search.php?action=om_friends&value=$2';
+			$forum_rewrite_rules['/^search[\/_-]?(om_friends)[\/_-]([0-9]+)[\/_-]p(age)?[\/_-]?([0-9]+)(\.html?|\/)?$/i'] = 'search.php?action=om_friends&value=$2&p=$4';
+
+			($hook = get_hook('om_friends_after_rewrite_rules_set')) ? eval($hook) : null;
+		]]></hook>
+
+	</hooks>
+</extension>

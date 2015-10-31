@@ -1,0 +1,111 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+
+<extension engine="1.0">
+	<id>om_fill_location</id>
+	<title>Fill your location</title>
+	<version>0.0.1</version>
+	<description>Notifies user when he hasn't filled his location in profile.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<install><![CDATA[
+	]]></install>
+
+	<uninstall><![CDATA[
+	]]></uninstall>
+
+	<hooks>
+		
+	
+	<hook id="mi_new_action"><![CDATA[
+	$section = isset($_GET['section']) ? $_GET['section'] : null;
+	if ($section == 'om_fill_location')
+	{
+		if (!isset($lang_om_fill_location))
+		{
+			if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+				include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+			else
+				include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+		}
+		
+		define('FORUM_PAGE', 'om_fill_location'); 
+		require FORUM_ROOT.'header.php';
+
+		// START SUBST - <!-- forum_main -->
+		ob_start();
+		?>
+
+			<div class="main-head">
+				<h2 class="hn"><span><?php echo $lang_om_fill_location['Fill your profile']; ?></span></h2>
+			</div>
+
+			<div class="main-content main-frm">
+				<div class="post-entry" style="padding: 0 3em;">
+
+						<div class="entry-content" style="font-size: 1.5em;">
+							<span style="font-size: 2.0em"><?php echo $lang_om_fill_location['We are sad']; ?></span>
+
+							<div style="margin: 0 auto; text-align: center;">
+								<img src="<?php echo $ext_info['url']; ?>/img/saaaad.png" />
+							</div>
+							<p><?php echo $lang_om_fill_location['Why are we sad']; ?></p>
+						</div>
+				</div>
+
+				<div class="frm-buttons">
+					<form class="frm-form" action="<?php echo forum_link($forum_url['index']); ?>" accept-charset="utf-8" method="post">
+					<div class="hidden">
+						<input type="hidden" name="csrf_token" value="<?php echo generate_form_token(forum_link($forum_url['index'])); ?>" />
+					</div>
+					<span class="submit">
+						<input type="submit" value="<?php echo $lang_om_fill_location['Continue to forum']; ?>" name="return">
+					</span>
+					</form>
+				</div>
+			</div>
+		<?php
+
+
+		$tpl_temp = forum_trim(ob_get_contents());
+		$tpl_main = str_replace('<!-- forum_main -->', $tpl_temp, $tpl_main);
+		ob_end_clean();
+		// END SUBST - <!-- forum_main -->
+
+		require FORUM_ROOT.'footer.php';
+
+	}
+	]]></hook>
+	
+
+	<hook id="li_login_pre_redirect"><![CDATA[
+		if ($forum_config['o_sef'] != 'Default' && file_exists($ext_info['path'].'/url/'.$forum_config['o_sef'].'.php'))
+			require $ext_info['path'].'/url/'.$forum_config['o_sef'].'.php';
+		else
+			require $ext_info['path'].'/url/Default.php';
+			
+		$query = array(
+			'SELECT'	=> 'u.location',
+			'FROM'		=> 'users AS u',
+			'WHERE'		=> 'u.id = '.$user_id,
+		);
+		$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
+		if ($row = $forum_db->fetch_assoc($result)) {
+			if ($row['location'] == null || forum_trim($row['location']) == '') {
+				$_POST['redirect_url'] = forum_link($forum_url['om_fill_location']);
+			}
+		}
+	]]></hook>
+	
+	<!-- -->
+	<hook id="re_rewrite_rules"><![CDATA[
+		// rewrite rules for different links modes
+		$forum_rewrite_rules['/^misc[\/_-]?om_fill_location(\.html?|\/)?$/i'] = 'misc.php?section=om_fill_location';
+	]]></hook>
+
+	</hooks>
+</extension>

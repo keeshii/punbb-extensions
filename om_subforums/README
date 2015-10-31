@@ -1,0 +1,17 @@
+Subforum extension already exists for punbb forum, it is made by Putnik:
+
+https://github.com/putnik/punbb_subforums
+
+Putnik made a really great work, thank you :). His extension is focusing on version 1.3 of punbb.
+
+My extension is basing on his work - i am using the same file structure (it was fast, clear,
+just good). Everything else I have made myself - I have rewritten 95% of source code and test it.
+
+Source code is much simplier than the one from putnik. I don't allow to create multi-level nested
+subforums - only one level is allowed. The subforums are shown on the index page in one line
+separated by commas or in the list of topics.
+
+I have tested this extension with every possible scenario - changing category of parent forum,
+changing parent, deleting forum, deleting category, etc.
+
+enjoy.

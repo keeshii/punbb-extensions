@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<!--
+/**
+ * @package om_del_report
+ */
+-->
+
+<extension engine="1.0">
+	<id>om_del_report</id>
+	<title>Delete report</title>
+	<version>1.4.2.02</version>
+	<description>Allows administrator to delete post reports.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<hooks>
+		<hook id="arp_pre_header_load"><![CDATA[
+			// Delete reports
+			if (isset($_POST['om_del_report_selected']))
+			{
+				if (empty($_POST['reports']))
+					message($lang_admin_reports['No reports selected']);
+
+				($hook = get_hook('om_del_report_selected_form_submitted')) ? eval($hook) : null;
+
+				$reports_to_delete = array_map('intval', array_keys($_POST['reports']));
+
+				$query = array(
+					'DELETE'	=> 'reports',
+					'WHERE'		=> 'zapped IS NULL AND id IN('.implode(',', $reports_to_delete).')'
+				);
+
+				($hook = get_hook('om_del_report_selected_qr_del_reports')) ? eval($hook) : null;
+				$forum_db->query_build($query) or error(__FILE__, __LINE__);
+
+				if (!isset($lang_om_del_report)) {
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+
+
+				// Add flash message
+				$forum_flash->add_info($lang_om_del_report['Reports deleted']);
+
+				($hook = get_hook('om_del_report_selected_pre_redirect')) ? eval($hook) : null;
+
+				redirect(forum_link($forum_url['admin_reports']), $lang_om_del_report['Reports deleted']);
+			}
+
+			if (isset($_POST['om_del_report_read']))
+			{
+				$query = array(
+					'DELETE'	=> 'reports',
+					'WHERE'		=> 'zapped IS NOT NULL'
+				);
+
+				($hook = get_hook('om_del_report_read_qr_del_reports')) ? eval($hook) : null;
+				$forum_db->query_build($query) or error(__FILE__, __LINE__);
+
+				if (!isset($lang_om_del_report)) {
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+
+
+				// Add flash message
+				$forum_flash->add_info($lang_om_del_report['Reports deleted']);
+
+				($hook = get_hook('om_del_report_read_pre_redirect')) ? eval($hook) : null;
+
+				redirect(forum_link($forum_url['admin_reports']), $lang_om_del_report['Reports deleted']);
+			}
+		]]></hook>
+
+		<hook id="arp_qr_get_new_reports"><![CDATA[
+			if (!isset($lang_om_del_report)) {
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+
+			//very nasty hack, because there is no hook in the place I want
+			$lang_admin_common['Select all'] = $lang_admin_common['Select all'] . '</span>'
+				.'<span class="submit"><input type="submit" name="om_del_report_selected" value="'.$lang_om_del_report['Delete selected'].'" />';
+		]]></hook>
+	
+		<hook id="arp_report_new_block" priority="9"><![CDATA[
+			$last_report = end($zapped_reports);
+			if ($cur_report['id'] == $last_report['id']) {
+
+				if (!isset($lang_om_del_report)) {
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+?>
+				</div>
+			</div>
+
+	<div>
+		<div>
+			<form id="arp-new-report-form" class="frm-form" method="post" accept-charset="utf-8" action="<?php echo forum_link($forum_url['admin_reports']) ?>">
+				<div class="hidden">
+					<input type="hidden" name="csrf_token" value="<?php echo generate_form_token(forum_link($forum_url['admin_reports'])) ?>" />
+				</div>
+
+				<div class="frm-buttons">
+					<span class="submit"><input type="submit" name="om_del_report_read" value="<?php echo $lang_om_del_report['Delete read'] ?>" /></span>
+<?php ($hook = get_hook('om_del_report_read_pre_fieldset_end')) ? eval($hook) : null; ?>
+				</div>
+			</form>
+<?php
+			}
+		]]></hook>
+	</hooks>
+</extension>

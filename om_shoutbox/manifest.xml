@@ -1,0 +1,362 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+
+<extension engine="1.0">
+	<id>om_shoutbox</id>
+	<title>Simple Shoutbox</title>
+	<version>0.0.5</version>
+	<description>Shows shoutbox on the bottom of the page</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<dependencies>
+		<dependency>pun_jquery</dependency>
+	</dependencies>
+	
+	<install><![CDATA[
+		$schema = array(
+			'FIELDS' => array(
+				'id' => array(
+					'datatype' => 'SERIAL',
+					'allow_null' => false
+				),
+				'poster' => array(
+					'datatype' => 'VARCHAR(200)',
+					'allow_null' => false,
+					'default' => '\'\''
+				),
+				'date' => array(
+					'datatype' => 'INT(10) UNSIGNED',
+					'allow_null' => false,
+					'default' => '0'
+				),
+				'message' => array(
+					'datatype' => 'VARCHAR(2048)',
+					'allow_null' => false
+				),
+				'color' => array(
+					'datatype' => 'INT(10) UNSIGNED',
+					'allow_null' => false,
+					'default' => '0'
+				),
+			),
+			'PRIMARY KEY'	=> array('id'),
+			'INDEXES'		=> array('om_shoutbox_date_idx' => array('date')),
+			'ENGINE'		=> 'HEAP',
+		);
+	
+		$forum_db->create_table('om_shoutbox', $schema);
+		
+		if(!$forum_db->field_exists('users', 'om_shoutbox_color'))
+			$forum_db->add_field('users', 'om_shoutbox_color', 'INT', false, '0');
+			
+		// Add extension options to the config table
+		$om_shoutbox_config = array(
+			'o_om_shoutbox_msg_length' => '512',
+			'o_om_shoutbox_msg_time' => '60',
+			'o_om_shoutbox_msg_count' => '50',
+			'o_om_shoutbox_refresh_rate' => '3000',
+			'o_om_shoutbox_show_top' => 'false',
+			'o_om_shoutbox_guests' => 'false',
+			'o_om_shoutbox_show_smilies' => 'false',
+			'o_om_shoutbox_colors' =>
+				"#a8996e #7e724a #696039 #544b2c #73a3eb #5285d6 #4067ab #263a71\n".
+				"#7aba4c #589948 #2f6b37 #215a32 #f6ca36 #fcb526 #f99417 #e77919\n".
+				"#fd955d #ea4821 #c93418 #a72d1a #fb7b9e #f6586d #df5488 #872932\n".
+				"#c084c4 #6a3666 #ac8f2c #746d50",
+		);
+
+		foreach ($om_shoutbox_config as $conf_name => $conf_value)
+		{
+			forum_config_add($conf_name, $conf_value);
+		}
+
+	]]></install>
+
+	<uninstall><![CDATA[
+		$forum_db->drop_table('om_shoutbox');
+		$forum_db->drop_field('users', 'om_shoutbox_color');
+		
+		// Delete extension options from the config
+		forum_config_remove(array(
+			'o_om_shoutbox_msg_length',
+			'o_om_shoutbox_msg_time',
+			'o_om_shoutbox_msg_count',
+			'o_om_shoutbox_refresh_rate',
+			'o_om_shoutbox_show_top',
+			'o_om_shoutbox_guests',
+			'o_om_shoutbox_show_smilies',
+			'o_om_shoutbox_colors',
+		));
+	]]></uninstall>
+
+	<hooks>
+		
+		<hook id="om_warnings_fn_get_restrictions_pre_return"><![CDATA[
+			// load language file
+			if (!isset($lang_om_shoutbox)) {
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+			
+			$restrictions['om_shoutbox'] = $lang_om_shoutbox['Block shoutbox'];
+		]]></hook>
+
+		<hook id="in_start"><![CDATA[
+			// on index.php, if we are not guests
+			if (!$forum_user['is_guest'] || $forum_config['o_om_shoutbox_guests'] == '1') {
+			
+				// load styles
+				if ($forum_user['style'] != 'Oxygen' && file_exists($ext_info['path'].'/css/'.$forum_user['style'].'/om_shoutbox.min.css'))
+					$forum_loader->add_css($ext_info['url'].'/css/'.$forum_user['style'].'/om_shoutbox.min.css', array('type' => 'url', 'media' => 'screen'));
+				else
+					$forum_loader->add_css($ext_info['url'].'/css/Oxygen/om_shoutbox.min.css', array('type' => 'url', 'media' => 'screen'));
+			
+				// escape colors and convert them into js array
+				if (!empty($forum_config['o_om_shoutbox_colors'])) {
+					$om_shoutbox_colors = str_replace('\\','\\\\', $forum_config['o_om_shoutbox_colors']);
+					$om_shoutbox_colors = str_replace('"','\\"', $om_shoutbox_colors);
+					$om_shoutbox_colors = preg_split("/[\s,]+/", $om_shoutbox_colors);
+					$om_shoutbox_colors = 'new Array("'. implode('","', $om_shoutbox_colors). '")';
+				} else {
+					$om_shoutbox_colors = 'new Array()';
+				}
+					
+				// load js for shoutbox
+				$forum_loader->add_js($ext_info['path'].'/js/jquery.shoutbox.js', array('weight' => 85, 'group' => 'om_shoutbox'));
+				$forum_loader->add_js('$(document).ready(function() {
+					om_shoutbox_init('.intval($forum_config['o_om_shoutbox_refresh_rate']).','.$om_shoutbox_colors.');
+				});', array('type' => 'inline', 'weight' => 90, 'group' => 'om_shoutbox'));
+				
+				
+				// load language file
+				if (!isset($lang_om_shoutbox)) {
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+			}
+		]]></hook>
+		
+		<hook id="pf_change_details_settings_email_fieldset_end"><![CDATA[
+			// Customize my-pretty-shoutbox-color
+			
+			// load language file
+			if (!isset($lang_om_shoutbox)) {
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+
+?>
+			<fieldset>
+				<fieldset class="frm-group group<?php echo ++$forum_page['group_count'] ?>">
+<?php ($hook = get_hook('om_shoutbox_pf_pre_color_setting')) ? eval($hook) : null; ?>
+					<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+						<div class="sf-box text">
+							<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_shoutbox['Shoutbox color'] ?></span></label><br />
+							<span class="fld-input"><select id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_shoutbox_color]">
+							
+							<option value="0"<?php echo (($user['om_shoutbox_color'] == null) ? ' selected="selected"' : '');?>><?php echo $lang_om_shoutbox['Random color'] ?></option>
+							<?php
+							// escape colors and convert them into js array
+							if (!empty($forum_config['o_om_shoutbox_colors'])) {
+								$om_shoutbox_colors = preg_split("/[\s,]+/", $forum_config['o_om_shoutbox_colors']);
+							
+								foreach ($om_shoutbox_colors as $key => $color) {
+									// show all possible colors for shoutbox
+									echo '<option style="color:'.$color.'; font-weight: bold;" value="'.($key+1).'"'
+										.(($user['om_shoutbox_color'] == ($key+1) ) ? ' selected="selected"' : '').'>'
+										.forum_htmlencode($color).": ".forum_htmlencode($user['username']) . '</option>';
+								}
+							}
+							?>
+							</select></span>
+						</div>
+					</div>
+				</fieldset>
+<?php ($hook = get_hook('om_shoutbox_pf_fieldset_end')) ? eval($hook) : null; ?><?php $forum_page['item_count'] = 0; ?>
+			</fieldset>
+<?php
+		]]></hook>
+		
+		<hook id="pf_change_details_settings_validation"><![CDATA[
+			// decode color entered by user
+			$form['om_shoutbox_color'] = isset($_POST['form']['om_shoutbox_color']) ? intval($_POST['form']['om_shoutbox_color']) : 0;
+			($hook = get_hook('om_shoutbox_pf_validation_end')) ? eval($hook) : null;
+		]]></hook>
+		
+		<hook id="aop_features_avatars_fieldset_end"><![CDATA[
+			// load language file
+			if (!isset($lang_om_shoutbox)) {
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+		
+			$forum_page['group_count'] = $forum_page['item_count'] = 0;
+?>
+			
+			<div class="content-head">
+				<h2 class="hn"><span><?php echo $lang_om_shoutbox['Features title'] ?></span></h2>
+			</div>
+			<fieldset class="frm-group group<?php echo ++$forum_page['group_count'] ?>">
+				<legend class="group-legend"><span><?php echo $lang_om_shoutbox['Shoutbox settings'] ?></span></legend>
+
+				<div class="ct-box">
+					<p class="warn"><?php echo $lang_om_shoutbox['Setup colors info'] ?></p>
+				</div>
+				<div class="txt-set set<?php echo ++$forum_page['item_count'] ?>">
+					<div class="txt-box textarea">
+						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_shoutbox['Setup colors'] ?></span></label>
+						<div class="txt-input"><span class="fld-input"><textarea id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_shoutbox_colors]" rows="3" cols="55"><?php echo forum_htmlencode($forum_config['o_om_shoutbox_colors']) ?></textarea></span></div>
+					</div>
+				</div>
+				
+				<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+					<div class="sf-box text">
+						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_shoutbox['Message length'] ?></span><small><?php echo $lang_om_shoutbox['Message length info'] ?></small></label><br />
+						<span class="fld-input"><input type="text" id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_shoutbox_msg_length]" size="6" maxlength="6" value="<?php echo $forum_config['o_om_shoutbox_msg_length'] ?>" /></span>
+					</div>
+				</div>
+				<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+					<div class="sf-box text">
+						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_shoutbox['Message time'] ?></span><small><?php echo $lang_om_shoutbox['Message time info'] ?></small></label><br />
+						<span class="fld-input"><input type="text" id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_shoutbox_msg_time]" size="6" maxlength="6" value="<?php echo $forum_config['o_om_shoutbox_msg_time'] ?>" /></span>
+					</div>
+				</div>
+				<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+					<div class="sf-box text">
+						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_shoutbox['Message count'] ?></span><small><?php echo $lang_om_shoutbox['Message count info'] ?></small></label><br />
+						<span class="fld-input"><input type="text" id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_shoutbox_msg_count]" size="6" maxlength="6" value="<?php echo $forum_config['o_om_shoutbox_msg_count'] ?>" /></span>
+					</div>
+				</div>
+				<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+					<div class="sf-box text">
+						<label for="fld<?php echo ++$forum_page['fld_count'] ?>"><span><?php echo $lang_om_shoutbox['Refresh rate'] ?></span><small><?php echo $lang_om_shoutbox['Refresh rate info'] ?></small></label><br />
+						<span class="fld-input"><input type="text" id="fld<?php echo $forum_page['fld_count'] ?>" name="form[om_shoutbox_refresh_rate]" size="6" maxlength="6" value="<?php echo $forum_config['o_om_shoutbox_refresh_rate'] ?>" /></span>
+					</div>
+				</div>
+				
+				<fieldset class="mf-set set<?php echo ++$forum_page['item_count'] ?>">
+					<legend><span><?php echo $lang_om_shoutbox['Display options'] ?></span></legend>
+					<div class="mf-box">
+						<div class="mf-item">
+							<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_shoutbox_show_top]" value="1"<?php if ($forum_config['o_om_shoutbox_show_top'] == '1') echo ' checked="checked"' ?> /></span>
+							<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_shoutbox['Show on top'] ?></label>
+						</div>
+					</div>
+					<div class="mf-box">
+						<div class="mf-item">
+							<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_shoutbox_guests]" value="1"<?php if ($forum_config['o_om_shoutbox_guests'] == '1') echo ' checked="checked"' ?> /></span>
+							<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_shoutbox['Show to guests'] ?></label>
+						</div>
+					</div>
+					<div class="mf-box">
+						<div class="mf-item">
+							<span class="fld-input"><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_shoutbox_show_smilies]" value="1"<?php if ($forum_config['o_om_shoutbox_show_smilies'] == '1') echo ' checked="checked"' ?> /></span>
+							<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_shoutbox['Show smilies'] ?></label>
+						</div>
+					</div>
+				</fieldset>
+
+<?php ($hook = get_hook('om_shoutbox_aop_fieldset_end')) ? eval($hook) : null; ?>
+			</fieldset>
+<?php
+		]]></hook>
+
+		<hook id="aop_features_validation"><![CDATA[
+			$form['om_shoutbox_msg_length'] = (!isset($form['om_shoutbox_msg_length']) || (int) $form['om_shoutbox_msg_length'] <= 0) ? '0' : (string)(int) $form['om_shoutbox_msg_length'];
+			$form['om_shoutbox_msg_time'] = (!isset($form['om_shoutbox_msg_time']) || (int) $form['om_shoutbox_msg_time'] <= 0) ? '0' : (string)(int) $form['om_shoutbox_msg_time'];
+			$form['om_shoutbox_msg_count'] = (!isset($form['om_shoutbox_msg_count']) || (int) $form['om_shoutbox_msg_count'] <= 0) ? '0' : (string)(int) $form['om_shoutbox_msg_count'];
+			$form['om_shoutbox_refresh_rate'] = (!isset($form['om_shoutbox_refresh_rate']) || (int) $form['om_shoutbox_refresh_rate'] <= 500) ? '500' : (string)(int) $form['om_shoutbox_refresh_rate'];
+
+			// longer messages will be truncated by database varchar(2048).
+			// there is also no sense in using longer messages
+			if ($form['om_shoutbox_msg_length'] > 2048)
+				$form['om_shoutbox_msg_length'] = 2048;
+			
+			if (!isset($form['om_shoutbox_show_top']) || $form['om_shoutbox_show_top'] != '1')
+				$form['om_shoutbox_show_top'] = '0';
+
+			if (!isset($form['om_shoutbox_show_smilies']) || $form['om_shoutbox_show_smilies'] != '1')
+				$form['om_shoutbox_show_smilies'] = '0';
+
+			if (!isset($form['om_shoutbox_guests']) || $form['om_shoutbox_guests'] != '1')
+				$form['om_shoutbox_guests'] = '0';
+
+			if ($form['om_shoutbox_colors'] != '')
+				$form['om_shoutbox_colors'] = forum_trim(forum_linebreaks($form['om_shoutbox_colors']));
+
+			($hook = get_hook('om_shoutbox_aop_validation_end')) ? eval($hook) : null;
+		]]></hook>
+		
+		
+		<hook id="in_main_output_start"><![CDATA[
+			if ((!$forum_user['is_guest'] || $forum_config['o_om_shoutbox_guests'] == '1') && $forum_config['o_om_shoutbox_show_top']==1) {
+?>
+		<form id="om_shoutbox" action="" method="get">
+			<div class="main-content om_shoutbox">
+				<div class="om_shoutbox_messages">
+					<ul>
+						<li><?php echo $lang_om_shoutbox['Loading']; ?></li>
+					</ul>
+				</div>
+<?php if (!$forum_user['is_guest'] && ($forum_user['g_id'] == FORUM_ADMIN || !isset($forum_user['om_warnings_restrictions']) || !in_array('om_shoutbox', $forum_user['om_warnings_restrictions']))): ?>
+				<div class="om_shoutbox_message">
+					<table>
+						<tr>
+							<td><input type="text" id="om_shoutbox" name="message" autocomplete="off"></td>
+							<td class="om_shoutbox_submit"><span class="submit primary"><input type="submit" value="<?php echo $lang_om_shoutbox['Send'] ?>"></span></td>
+						</tr>
+					</table>
+				</div>
+<?php endif; ?>
+			</div>
+		</form>
+<?php
+			}
+		]]></hook>
+		
+		
+		<hook id="in_info_output_start"><![CDATA[
+			if ((!$forum_user['is_guest'] || $forum_config['o_om_shoutbox_guests'] == '1') && $forum_config['o_om_shoutbox_show_top']!=1) {
+?>
+		<form id="om_shoutbox" action="" method="get">
+			<div class="main-content om_shoutbox">
+				<div class="om_shoutbox_messages">
+					<ul>
+						<li><?php echo $lang_om_shoutbox['Loading']; ?></li>
+					</ul>
+				</div>
+<?php if (!$forum_user['is_guest'] && ($forum_user['g_id'] == FORUM_ADMIN || !isset($forum_user['om_warnings_restrictions']) || !in_array('om_shoutbox', $forum_user['om_warnings_restrictions']))): ?>
+				<div class="om_shoutbox_message">
+					<table>
+						<tr>
+							<td><input type="text" id="om_shoutbox" name="message" autocomplete="off"></td>
+							<td class="om_shoutbox_submit"><span class="submit primary"><input type="submit" value="<?php echo $lang_om_shoutbox['Send'] ?>"></span></td>
+						</tr>
+					</table>
+				</div>
+<?php endif; ?>
+			</div>
+		</form>
+<?php
+			}
+		]]></hook>
+
+		<hook id="fn_get_current_url_start"><![CDATA[
+			if (defined('OM_SHOUTBOX_IGNORE_PREV_URL')) {
+				return null;
+			}
+		]]></hook>
+	</hooks>
+</extension>

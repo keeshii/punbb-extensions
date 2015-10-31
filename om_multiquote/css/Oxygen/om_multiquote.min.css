@@ -1,0 +1,15 @@
+/* css form om_multiquote */
+
+/* toggled buttons next to posts */
+
+.brd .postfoot .post-actions span.om_multiquote {
+	cursor: pointer;
+	color: #00579C;
+	text-decoration: none;
+}
+
+
+.brd .postfoot .post-actions span.om_multiquote_hover a { 
+	color: #CD0021;
+	text-decoration: underline;
+}

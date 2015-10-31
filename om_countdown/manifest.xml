@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<extension engine="1.0">
+	<id>om_countdown</id>
+	<title>Countdown</title>
+	<version>0.0.2</version>
+	<description>Adds a countdown on the main page to specified date and time.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<dependencies>
+		<dependency>pun_jquery</dependency>
+	</dependencies>
+
+	<install><![CDATA[
+		// Add extension options to the config table
+		$om_medals_config = array(
+			'o_om_countdown_date' => '',
+			'o_om_countdown_title' => '',
+		);
+
+		foreach ($om_medals_config as $conf_name => $conf_value)
+		{
+			forum_config_add($conf_name, $conf_value);
+		}
+	]]></install>
+
+	<uninstall><![CDATA[
+		// Delete extension options from the config
+		forum_config_remove(array(
+			'o_om_countdown_date',
+			'o_om_countdown_title',
+		));
+	]]></uninstall>
+
+	<hooks>
+		<hook id="aop_features_avatars_fieldset_end"><![CDATA[
+			if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php')) {
+				include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+			} else {
+				include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+
+			?>
+			<div class="content-head">
+				<h2 class="hn">
+					<span><?php echo $lang_om_countdown['Countdown settings']; ?></span>
+				</h2>
+			</div>
+			<fieldset class="frm-group group1">
+				<legend class="group-legend">
+					<span><?php echo $lang_om_countdown['Countdown description']; ?></span>
+				</legend>
+				<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+					<div class="sf-box text">
+						<span class="fld-input">
+							<input id="fld<?php echo ++$forum_page['fld_count'] ?>" type="text" size="40" value="<?php echo forum_htmlencode($forum_config['o_om_countdown_date']); ?>" name="form[om_countdown_date]"/>
+						</span>
+						<label for="fld<?php echo $forum_page['fld_count'] ?>">
+							<span><?php echo $lang_om_countdown['Countdown to date']; ?></span>
+							<small><?php echo $lang_om_countdown['Countdown to date or empty']; ?></small>
+						</label>
+					</div>
+				</div>
+				<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+					<div class="sf-box text">
+						<span class="fld-input">
+							<input id="fld<?php echo ++$forum_page['fld_count'] ?>" type="text" size="40" value="<?php echo forum_htmlencode($forum_config['o_om_countdown_title']); ?>" name="form[om_countdown_title]"/>
+						</span>
+						<label for="fld<?php echo $forum_page['fld_count'] ?>">
+							<span><?php echo $lang_om_countdown['Counter title']; ?></span>
+							<small><?php echo $lang_om_countdown['Name of important event']; ?></small>
+						</label>
+					</div>
+				</div>
+			</fieldset>
+			<?php
+			
+			// 2x text field, aop_features_validation not required, we are trusting the admin ;)
+		]]></hook>
+
+		
+		<hook id="in_pre_header_load"><![CDATA[
+			// show countdown on the index page
+			if (!empty($forum_config['o_om_countdown_date'])) {
+			
+				// css style
+				if ($forum_user['style'] != 'Oxygen' && file_exists($ext_info['path'].'/css/'.$forum_user['style'].'/om_countdown.min.css'))
+					$forum_loader->add_css($ext_info['url'].'/css/'.$forum_user['style'].'/om_countdown.min.css', array('type' => 'url', 'media' => 'screen'));
+				else
+					$forum_loader->add_css($ext_info['url'].'/css/Oxygen/om_countdown.min.css', array('type' => 'url', 'media' => 'screen'));
+
+				// php language file
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php')) {
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				} else {
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+				
+				// core js file
+				$forum_loader->add_js($ext_info['url'].'/om.countdown.jquery.js', array('weight' => 85, 'group' => 'om_countdown'));
+
+				// language-specified js file (it should be loaded together with core)
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/om.countdown.jquery.js')) {
+					$forum_loader->add_js($ext_info['url'].'/lang/'.$forum_user['language'].'/om.countdown.jquery.js', array('weight' => 90, 'group' => 'om_countdown'));
+				}
+		
+				$om_countdown_timestamp = strtotime($forum_config['o_om_countdown_date']);
+
+				if ($om_countdown_timestamp !== false && $om_countdown_timestamp > time()) {
+					$forum_loader->add_js('
+						$(document).ready(function(){
+							var eventDay = new Date('.($om_countdown_timestamp*1000).');
+
+							$(\'#om_countdown\').countdown({until: eventDay,  
+								description: \''.$forum_config['o_om_countdown_title'].'\'});
+						});
+					', array('type' => 'inline', 'weight' => 95, 'group' => 'om_countdown'));
+				}
+			}
+		]]></hook>
+		
+		
+		<hook id="hd_gen_elements"><![CDATA[
+			if (FORUM_PAGE == 'index' && !empty($forum_config['o_om_countdown_date'])) {
+				$gen_elements['<!-- forum_desc -->'] .= '<div id="om_countdown"></div>';
+			}
+		]]></hook>
+
+
+	</hooks>
+</extension>

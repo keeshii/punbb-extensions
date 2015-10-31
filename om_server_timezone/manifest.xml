@@ -1,0 +1,88 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<extension engine="1.0">
+	<id>om_server_timezone</id>
+	<title>Server's timezone</title>
+	<version>0.0.2</version>
+	<description>Users can use the timezone of the server.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<install><![CDATA[
+		if(!$forum_db->field_exists('users', 'om_server_timezone'))
+			$forum_db->add_field('users', 'om_server_timezone', 'TINYINT(1)', false, '0');
+		
+		// automatically activate this option for users of server's timezone
+		$query = array(
+			'UPDATE'	=> 'users',
+			'SET'		=> 'om_server_timezone=1',
+			'WHERE'		=> 'id > 1 AND timezone='.$forum_config['o_default_timezone'],
+		);
+		$forum_db->query_build($query) or error(__FILE__, __LINE__);
+	]]></install>
+
+	<uninstall><![CDATA[
+		$forum_db->drop_field('users', 'om_server_timezone');
+	]]></uninstall>
+
+
+	<hooks>
+		<hook id="pf_change_details_settings_pre_header_load"><![CDATA[
+			// disable timezone settings if checkbox is checked
+			$forum_loader->add_js($ext_info['url'].'/om.server.timezone.js', array('weight' => 85, 'group' => 'om_server_timezone'));
+		]]></hook>
+		
+		<hook id="pf_change_details_settings_pre_timezone"><![CDATA[
+			// display checkbox with om_server_timezone
+			if (!isset($lang_om_server_timezone))
+			{
+				if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+					include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+				else
+					include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+			}
+			?>
+			<div class="sf-set set<?php echo ++$forum_page['item_count'] ?>">
+				<div class="sf-box checkbox">
+					<span class="fld-input"><input type="checkbox" onclick="om_server_timezone_click()" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="form[om_server_timezone]" value="1"<?php if ($user['om_server_timezone'] == 1) echo ' checked="checked"' ?> /></span>
+					<label for="fld<?php echo $forum_page['fld_count'] ?>"><?php echo $lang_om_server_timezone['Server timezone'] ?></label>
+				</div>
+			</div>
+			<?php
+		]]></hook>
+
+		<hook id="pf_change_details_settings_validation"><![CDATA[
+			// extract integer value from post table
+			$form['om_server_timezone'] = (isset($_POST['form']) && isset($_POST['form']['om_server_timezone'])) ? 1 : 0;
+
+			// remember old settings, even if they are not used anymore
+			if ($form['om_server_timezone'] == 1) {
+				$form['timezone'] = $user['timezone'];
+				if ($user['dst']) {
+					$form['dst'] = 1;
+				} elseif (isset($form['dst'])) {
+					unset($form['dst']);
+				}
+			}
+		]]></hook>
+		
+		<hook id="fn_cookie_login_end"><![CDATA[
+			// use timezone of server is user's enabled this setting
+			if (!$forum_user['is_guest'] && $forum_user['om_server_timezone']) {
+				$forum_user['timezone'] = $forum_config['o_default_timezone'];
+				$forum_user['dst'] = $forum_config['o_default_dst'];
+			}
+		]]></hook>
+		
+		<hook id="fn_add_user_qr_insert_user"><![CDATA[
+			// set server's timezone to new users if thier timezone is the same as server
+			if ($user_info['timezone'] == $forum_config['o_default_timezone']) {
+				$query['INSERT'] .= ',om_server_timezone';
+				$query['VALUES'] .= ',1';
+			}
+		]]></hook>
+	</hooks>
+</extension>

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<!--
+/**
+ * Redirect users with adblock to error page..
+ *
+ * @package om_detect_adblock
+ */
+-->
+
+<extension engine="1.0">
+	<id>om_detect_adblock</id>
+	<title>Detect Adblock</title>
+	<version>0.0.1</version>
+	<description>Redirect users with adblock to error page.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<hooks>
+		<hook id="hd_head"><![CDATA[
+			if ($forum_user['g_id'] != FORUM_ADMIN && (!defined('FORUM_PAGE') || FORUM_PAGE != 'message')) {
+				$forum_loader->add_js('http://adblockdetector.com/script.php', array('weight' => 85, 'async' => false, 'group' => FORUM_JS_GROUP_SYSTEM));
+
+				$forum_loader->add_js('
+					function om_detect_adblock_enabled() {
+						window.location.replace("'. forum_link($forum_url['om_detect_adblock']) .'");
+					}
+					var _abdDetectedFnc = "om_detect_adblock_enabled";
+					// var _abdNotDetectedFnc = "om_detect_adblock_enabled";
+					', array('type' => 'inline', 'weight' => 90, 'group' => FORUM_JS_GROUP_SYSTEM));
+			}
+		]]></hook>
+	
+		<hook id="mi_new_action"><![CDATA[
+			// form to add, edit and delete warning types, levels (for admins only)
+			$section = isset($_GET['section']) ? $_GET['section'] : null;
+
+			if ($section == 'om_detect_adblock') {
+			
+				if (!isset($lang_om_detect_adblock))
+				{
+					if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+						include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+					else
+						include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+				}
+				message(sprintf($lang_om_detect_adblock['Disable adblock'], '<a href="mailto:'.forum_htmlencode($forum_config['o_admin_email']).'">'.forum_htmlencode($forum_config['o_admin_email']).'</a>'));
+			}
+		]]></hook>
+	
+		<hook id="co_modify_url_scheme"><![CDATA[
+			// load links in valid mode
+			if ($forum_config['o_sef'] != 'Default' && file_exists($ext_info['path'].'/url/'.$forum_config['o_sef'].'.php'))
+				require $ext_info['path'].'/url/'.$forum_config['o_sef'].'.php';
+			else
+				require $ext_info['path'].'/url/Default.php';
+		]]></hook>
+
+		<hook id="re_rewrite_rules"><![CDATA[
+			$forum_rewrite_rules['/^om_detect_adblock(\.html?|\/)?$/i'] = 'misc.php?section=om_detect_adblock';
+		]]></hook>
+	</hooks>
+</extension>

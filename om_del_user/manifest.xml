@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+<!--
+/**
+ * @package om_del_user
+ */
+-->
+
+<extension engine="1.0">
+	<id>om_del_user</id>
+	<title>Delete user</title>
+	<version>1.4.2.01</version>
+	<description>Users can delete their accounts.</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<hooks>
+		<hook id="pf_change_details_about_pre_header_load"><![CDATA[
+// show link to delete profile
+// admins cannot delete his profiles
+if ($forum_user['g_id'] != FORUM_ADMIN && $forum_page['own_profile']) {
+	if (!isset($lang_om_del_user)) {
+		if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+			include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+		else
+			include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+	}
+	$forum_page['user_options']['om_del_user'] = '<span'.(empty($forum_page['user_options']) ? ' class="first-item"' : '').'><a href="'.forum_link($forum_url['om_del_user'], $id).'">'.$lang_om_del_user['Delete my profile'].'</a></span>';
+}
+		]]></hook>
+
+		<hook id="pf_new_action"><![CDATA[
+// confirmation form
+if ($action == 'om_del_user' || isset($_POST['om_del_user']) || isset($_POST['om_del_user_cancel']))
+{
+	// User pressed the cancel button
+	if (isset($_POST['om_del_user_cancel']))
+		redirect(forum_link($forum_url['user'], $id), $lang_common['Cancel redirect']);
+
+	($hook = get_hook('om_del_user_selected')) ? eval($hook) : null;
+
+	if ($forum_user['id'] != $id)
+		message($lang_common['No permission']);
+
+	if ($user['g_id'] == FORUM_ADMIN)
+		message($lang_profile['Cannot delete admin']);
+
+	if (!isset($lang_om_del_user)) {
+		if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+			include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+		else
+			include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+	}
+
+	if (isset($_POST['om_del_user']))
+	{
+		($hook = get_hook('om_del_user_form_submitted')) ? eval($hook) : null;
+
+		// delete user, but not his posts
+		delete_user($id, false);
+
+		// Remove cache file with forum stats
+		if (!defined('FORUM_CACHE_FUNCTIONS_LOADED'))
+		{
+			require FORUM_ROOT.'include/cache.php';
+		}
+
+		clean_stats_cache();
+
+		// Add flash message
+		$forum_flash->add_info($lang_om_del_user['User delete redirect']);
+
+		($hook = get_hook('om_del_user_pre_redirect')) ? eval($hook) : null;
+
+		redirect(forum_link($forum_url['logout'], array($forum_user['id'], generate_form_token('logout'.$forum_user['id']))),
+			$lang_om_del_user['User delete redirect']);
+	}
+
+	// Setup form
+	$forum_page['group_count'] = $forum_page['item_count'] = $forum_page['fld_count'] = 0;
+	$forum_page['form_action'] = forum_link($forum_url['om_del_user'], $id);
+
+	// Setup form information
+	$forum_page['frm_info'] = array(
+		'<li class="warn"><span>'.$lang_om_del_user['Delete warning'].'</span></li>',
+	);
+
+	// Setup breadcrumbs
+	$forum_page['crumbs'] = array(
+		array($forum_config['o_board_title'], forum_link($forum_url['index'])),
+		array(sprintf($lang_profile['Users profile'], $user['username'], $lang_profile['Section about']), forum_link($forum_url['profile_admin'], $id)),
+		$lang_om_del_user['Delete profile']
+	);
+
+	($hook = get_hook('om_del_user_pre_header_load')) ? eval($hook) : null;
+
+	define('FORUM_PAGE', 'om_del_user');
+	require FORUM_ROOT.'header.php';
+
+	// START SUBST - <!-- forum_main -->
+	ob_start();
+
+	($hook = get_hook('om_del_user_output_start')) ? eval($hook) : null;
+
+?>
+	<div class="main-head">
+		<h2 class="hn"><span><?php printf(($forum_user['id'] == $id) ? $lang_profile['Profile welcome'] : $lang_profile['Profile welcome user'], forum_htmlencode($user['username'])) ?></span></h2>
+	</div>
+	<div class="main-content main-frm">
+		<div class="ct-box warn-box">
+			<ul class="info-list">
+				<?php echo implode("\n\t\t\t\t", $forum_page['frm_info'])."\n" ?>
+			</ul>
+		</div>
+		<form class="frm-form" method="post" accept-charset="utf-8" action="<?php echo $forum_page['form_action'] ?>">
+			<div class="hidden">
+				<input type="hidden" name="csrf_token" value="<?php echo generate_form_token($forum_page['form_action']) ?>" />
+			</div>
+			<div class="frm-buttons">
+				<span class="submit primary caution"><input type="submit" name="om_del_user" value="<?php echo $lang_om_del_user['Delete'] ?>" /></span>
+				<span class="cancel"><input type="submit" name="om_del_user_cancel" value="<?php echo $lang_om_del_user['Cancel'] ?>" formnovalidate /></span>
+			</div>
+		</form>
+	</div>
+<?php
+	($hook = get_hook('om_del_user_end')) ? eval($hook) : null;
+
+	$tpl_temp = forum_trim(ob_get_contents());
+	$tpl_main = str_replace('<!-- forum_main -->', $tpl_temp, $tpl_main);
+	ob_end_clean();
+	// END SUBST - <!-- forum_main -->
+
+	require FORUM_ROOT.'footer.php';
+}
+		]]></hook>
+
+		<!-- -->
+		<hook id="co_modify_url_scheme"><![CDATA[
+// load links in valid mode
+if ($forum_config['o_sef'] != 'Default' && file_exists($ext_info['path'].'/url/'.$forum_config['o_sef'].'.php'))
+	require $ext_info['path'].'/url/'.$forum_config['o_sef'].'.php';
+else
+	require $ext_info['path'].'/url/Default.php';
+		]]></hook>
+		
+		<!-- -->
+		<hook id="re_rewrite_rules"><![CDATA[
+// rewrite rules for different links modes
+$forum_rewrite_rules['/^om_del_user[\/_-]?([0-9]+)(\.html?|\/)?$/i'] = 'profile.php?action=om_del_user&id=$1';
+		]]></hook>
+		
+	</hooks>
+</extension>

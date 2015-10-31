@@ -1,0 +1,6 @@
+This extension is based on pun_move_posts implemented by punbb development team.
+
+It tries to keep the post ids unchanged after moving.
+
+see this topics for futher reference:
+http://punbb.informer.com/forums/topic/25668/punmoveposts-bugs/

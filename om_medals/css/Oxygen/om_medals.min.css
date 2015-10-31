@@ -1,0 +1,16 @@
+div.om_medals-profile-data-box {
+	padding: 10px;
+}
+
+span.om_medals-profile, span.om_medals-viewtopic {
+	margin: 0;
+}
+
+div.om_medals-help {
+	float: left;
+	margin: 0 10px 0 0;
+}
+
+span.om_medals-one-row {
+	display: block;
+}

@@ -1,0 +1,53 @@
+
+div.om_shoutbox {
+	border: 1px solid #D3DAE1;
+	background-color: #ffffff;
+}
+
+div.om_shoutbox ul {
+	list-style: none;
+	padding: 6px 10px;
+	margin: 0;
+}
+
+div.om_shoutbox li {
+	margin: 4px;
+}
+
+div.om_shoutbox li span, div.om_shoutbox li a {
+	font-weight: bold;
+}
+
+div.om_shoutbox li span.om_shoutbox_date {
+	color:#58BAFF;
+}
+
+div.om_shoutbox_messages {
+	height: 300px;
+	background-color: #ffffff;
+	overflow: auto;
+}
+
+div.om_shoutbox_input {
+	padding: 10px;
+}
+
+div.om_shoutbox_message table {
+	padding: 0;
+	margin: 0;
+}
+
+div.om_shoutbox_message table tr td {
+	padding: 10px;
+	border-right: none;
+	border-left: none;
+	border-bottom: none;
+}
+
+.om_shoutbox_submit {
+	width: 200px;
+}
+
+div.om_shoutbox_message input {
+	width: 100%;
+}

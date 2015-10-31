@@ -1,0 +1,187 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE extension SYSTEM "ext-1.0.dtd">
+
+
+<extension engine="1.0">
+	<id>om_multiquote</id>
+	<title>Multi-quote</title>
+	<version>0.0.1</version>
+	<description>Adds functionality of multi-quoting (quoting many posts at once)</description>
+	<author>om</author>
+
+	<minversion>1.4RC1</minversion>
+	<maxtestedon>1.4.2</maxtestedon>
+
+	<dependencies>
+		<dependency>pun_jquery</dependency>
+	</dependencies>
+
+	<install><![CDATA[
+	]]></install>
+
+	<uninstall><![CDATA[
+	]]></uninstall>
+
+	<hooks>
+	
+	<hook id="vt_start"><![CDATA[
+		// Incuding styles for om_multiquote
+		if ($forum_user['style'] != 'Oxygen' && file_exists($ext_info['path'].'/css/'.$forum_user['style'].'/om_multiquote.min.css'))
+			$forum_loader->add_css($ext_info['url'].'/css/'.$forum_user['style'].'/om_multiquote.min.css', array('type' => 'url', 'media' => 'screen'));
+		else
+			$forum_loader->add_css($ext_info['url'].'/css/Oxygen/om_multiquote.min.css', array('type' => 'url', 'media' => 'screen'));
+			
+		if (!isset($lang_om_multiquote))
+		{
+			if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+				include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+			else
+				include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+		}
+	]]></hook>
+
+	<hook id="vt_modify_topic_info"><![CDATA[
+		// this is jquery script that handles toggle-button
+		// and modify url of "post-message"
+		// it probably could be done without jquery, but this way it was MUCH easier
+		$forum_loader->add_js('
+			$(document).ready(function(){
+
+				var posts_array = new Array();
+				var link_with_quote = "'.forum_link($forum_url['quote'], array($id, '@om_multiquote@')).'".replace(/&amp;/g, "&");
+				var link_without_quote = "'.forum_link($forum_url['new_reply'], $id).'".replace(/&amp;/g, "&");
+				
+				
+				$("span.om_multiquote a").click(function() {
+					$(this).parent().toggleClass("om_multiquote_hover");
+					
+					var class_name = $(this).attr("class");
+					var post_id = class_name.substr(class_name.lastIndexOf("_") + 1);
+					
+					if ($(this).parent().hasClass("om_multiquote_hover")) {
+						posts_array.push(post_id)
+					} else {
+						var index = posts_array.indexOf(post_id);
+						posts_array.splice(index, 1);
+					}
+					
+					if (posts_array.length > 0) {
+						var link = link_with_quote.replace("@om_multiquote@", posts_array.join());
+						$("p.posting a.newpost").attr("href", link);
+					} else {
+						$("p.posting a.newpost").attr("href", link_without_quote);
+					}
+				});
+			});
+		', array('type' => 'inline', 'weight' => 90, 'group' => 'om_multiquote'));
+	]]></hook>
+	
+	<hook id="vt_row_pre_post_actions_merge"><![CDATA[
+		// Generate the post options links for multi-quote
+		// this if-structure is the same as in viewtopic.php 1.4.2
+		if (!$forum_user['is_guest'])
+		{
+			if (!$forum_page['is_admmod'])
+			{
+				if ($cur_topic['closed'] == '0')
+				{
+					if (($cur_topic['post_replies'] == '' && $forum_user['g_post_replies'] == '1') || $cur_topic['post_replies'] == '1')
+						$forum_page['post_actions']['om_multiquote'] = '<span class="quote-post om_multiquote'.(empty($forum_page['post_actions']) ? ' first-item' : '').'"><a class="om_multiquote_'.$cur_post['id'].'">'.$lang_om_multiquote['Quote'].'<span> '.$lang_topic['Post'].' '.forum_number_format($forum_page['start_from'] + $forum_page['item_count']).'</span></a></span>';
+				}
+			}
+			else
+			{
+				$forum_page['post_actions']['om_multiquote'] = '<span class="quote-post om_multiquote'.(empty($forum_page['post_actions']) ? ' first-item' : '').'"><a class="om_multiquote_'.$cur_post['id'].'">'.$lang_om_multiquote['Quote'].'<span> '.$lang_topic['Post'].' '.forum_number_format($forum_page['start_from'] + $forum_page['item_count']).'</span></a></span>';
+			}
+		}
+		else
+		{
+			if ($cur_topic['closed'] == '0')
+			{
+				if (($cur_topic['post_replies'] == '' && $forum_user['g_post_replies'] == '1') || $cur_topic['post_replies'] == '1')
+					$forum_page['post_actions']['om_multiquote'] = '<span class="report-post om_multiquote'.(empty($forum_page['post_actions']) ? ' first-item' : '').'"><a class="om_multiquote_'.$cur_post['id'].'">'.$lang_om_multiquote['Quote'].'<span> '.$lang_topic['Post'].' '.forum_number_format($forum_page['start_from'] + $forum_page['item_count']).'</span></a></span>';
+			}
+		}
+	]]></hook>
+	
+	<hook id="po_posting_location_selected"><![CDATA[
+		// copied from post.php
+		// Are we quoting someone?
+		if (!isset($_POST['form_sent']) && $tid && isset($_GET['qid']))
+		{
+			// unset the $_GET['qid'] to prevent orginal quoting in post.php to be executed
+			$om_multiquote_tmp = explode(',',$_GET['qid']);
+			unset($_GET['qid']);
+
+			$qid = array();
+			foreach ($om_multiquote_tmp as $qid_element) {
+				$qid_element = intval($qid_element);
+				if ($qid_element < 1)
+					message($lang_common['Bad request']);
+				$qid[] = $qid_element;
+			}
+			unset($om_multiquote_tmp);
+
+			// Get the quote and quote poster
+			$query = array(
+				'SELECT'	=> 'p.id AS pid, p.poster, p.message',
+				'FROM'		=> 'posts AS p',
+				'WHERE'		=> 'id IN ('.implode(',',$qid).') AND topic_id='.$tid,
+				'ORDER BY'	=> 'p.posted',
+			);
+
+			$forum_page['quote'] = '';
+			
+			($hook = get_hook('om_multiquote_qr_get_quote')) ? eval($hook) : null;
+			$result = $forum_db->query_build($query) or error(__FILE__, __LINE__);
+			while ($quote_info = $forum_db->fetch_assoc($result)) {
+
+				if (!$quote_info)
+				{
+					message($lang_common['Bad request']);
+				}
+
+				$qid = $quote_info['pid'];
+				($hook = get_hook('om_multiquote_modify_quote_info')) ? eval($hook) : null;
+
+				if ($forum_config['p_message_bbcode'] == '1')
+				{
+					// If username contains a square bracket, we add "" or '' around it (so we know when it starts and ends)
+					if (strpos($quote_info['poster'], '[') !== false || strpos($quote_info['poster'], ']') !== false)
+					{
+						if (strpos($quote_info['poster'], '\'') !== false)
+							$quote_info['poster'] = '"'.$quote_info['poster'].'"';
+						else
+							$quote_info['poster'] = '\''.$quote_info['poster'].'\'';
+					}
+					else
+					{
+						// Get the characters at the start and end of $q_poster
+						$ends = utf8_substr($quote_info['poster'], 0, 1).utf8_substr($quote_info['poster'], -1, 1);
+
+						// Deal with quoting "Username" or 'Username' (becomes '"Username"' or "'Username'")
+						if ($ends == '\'\'')
+							$quote_info['poster'] = '"'.$quote_info['poster'].'"';
+						else if ($ends == '""')
+							$quote_info['poster'] = '\''.$quote_info['poster'].'\'';
+					}
+
+					$forum_page['quote'] .= '[quote='.$quote_info['poster'].']'.$quote_info['message'].'[/quote]'."\n\n";
+				}
+				else
+					$forum_page['quote'] .= '> '.$quote_info['poster'].' '.$lang_common['wrote'].':'."\n\n".'> '.$quote_info['message']."\n\n";
+			}
+		} 
+	]]></hook>
+	
+	<!-- -->
+	<hook id="re_rewrite_rules"><![CDATA[
+		// add new rewrite rules, allow to put comma in the url
+		if ($forum_config['o_sef'] != 'Default' && file_exists($ext_info['path'].'/url/'.$forum_config['o_sef'].'.php'))
+			require $ext_info['path'].'/url/'.$forum_config['o_sef'].'.php';
+		else
+			require $ext_info['path'].'/url/Default.php';
+	]]></hook>
+
+	</hooks>
+</extension>
