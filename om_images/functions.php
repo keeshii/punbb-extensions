@@ -50,14 +50,13 @@ function om_images_img_in_array(&$images_array, $name)
 //
 function om_images_add_link(&$images_array, $tag, $dir_name, $url, $link = '')
 {
-	$ext = strrchr($url, '.');
-	$allowed_extensions = array('.gif', '.jpeg', '.jpg', '.png');
+	$is_image = preg_match('/\.(gif|jpe?g|png)(\?.*)?$/', $url, $ext);
 	$new_url = $url;
 
 	($hook = get_hook('om_images_fn_add_link_allowed_extensions')) ? eval($hook) : null;
 
 	// if file has an extension of image and it wasn't processed before
-	if (!isset($images_array[$url]) && in_array($ext, $allowed_extensions)) {
+	if (!isset($images_array[$url]) && $is_image) {
 
 		// don't process the image, if url suggest it was already uploaded
 		$img_path = OM_IMAGES_EXT_URL.'/img/'.$dir_name;
@@ -74,6 +73,11 @@ function om_images_add_link(&$images_array, $tag, $dir_name, $url, $link = '')
 				$img_id++;
 				$new_name = ($img_id == 1 ? '' : $img_id . '_')
 					. str_replace(array('/','\\',':','?','"','<','>','|','=','&'),'_',$old_name);
+
+				// If url hasn't ended with an extension, add it to the end
+				if ($ext[2]) {
+					$new_name .= '.' . $ext[1];
+				}
 			} while (file_exists(OM_IMAGES_EXT_ROOT.'/img/'.$dir_name.'/'.$new_name) ||
 			         om_images_img_in_array($images_array, $new_name));
 
