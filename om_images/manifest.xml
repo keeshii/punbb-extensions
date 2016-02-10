@@ -13,7 +13,7 @@
 <extension engine="1.0">
 	<id>om_images</id>
 	<title>Simple image backup</title>
-	<version>1.4.2.06</version>
+	<version>1.4.2.07</version>
 	<description>Automaticaly download images from posts to local server.</description>
 	<author>om</author>
 
@@ -215,10 +215,15 @@
 				$forum_page['checkboxes']['om_images'] = '<div class="mf-item"><span class="fld-input"><input type="checkbox" id="fld'.(++$forum_page['fld_count']).'" name="om_images" value="1"'.(isset($_POST['om_images']) ? ' checked="checked"' : '').' /></span> <label for="fld'.$forum_page['fld_count'].'">'.$lang_om_images['Save images'].'</label></div>'; 
 			}
 		]]></hook>
-		
-		
-		
-		
+
+
+		<hook id="vt_quickpost_pre_display"><![CDATA[
+			if ($forum_config['o_om_images_default'] == '1') {
+				$forum_page['hidden_fields']['om_images'] = '<input type="hidden" name="om_images" value="1" />';
+			}
+		]]></hook>
+
+
 		<hook id="mr_confirm_delete_posts_qr_delete_posts"><![CDATA[
 			// don't forget to remove images when deleting posts
 			if (!defined('OM_IMAGES_FUNCTION_LOADED'))
