@@ -75,7 +75,7 @@ function om_images_add_link(&$images_array, $tag, $dir_name, $url, $link = '')
 					. str_replace(array('/','\\',':','?','"','<','>','|','=','&'),'_',$old_name);
 
 				// If url hasn't ended with an extension, add it to the end
-				if ($ext[2]) {
+				if (!isset($ext[2]) || $ext[2] == '') {
 					$new_name .= '.' . $ext[1];
 				}
 			} while (file_exists(OM_IMAGES_EXT_ROOT.'/img/'.$dir_name.'/'.$new_name) ||
