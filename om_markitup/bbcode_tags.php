@@ -64,7 +64,7 @@ $om_markitup_tags[] = '{name:"'.$lang_om_markitup['smilies'].'",  className:"smi
 $om_markitup_tags[] = '{separator:"---------------"}';
 
 $om_markitup_tags[] = '{name:"'.$lang_om_markitup['quote'].'",    className:"quote",     openWith:"[quote]", closeWith:"[/quote]"}';
-$om_markitup_tags[] = '{name:"'.$lang_om_markitup['code'].'",     className:"code",      openWith:"[code]", closeWith:"[/list]"}';
+$om_markitup_tags[] = '{name:"'.$lang_om_markitup['code'].'",     className:"code",      openWith:"[code]", closeWith:"[/code]"}';
 
 ($hook = get_hook('om_markitup_group_5_end')) ? eval($hook) : null;
 $om_markitup_tags[] = '{separator:"---------------"}';
