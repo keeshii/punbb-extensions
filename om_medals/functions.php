@@ -286,8 +286,10 @@ function om_medals_cmp($id1, $id2) {
 //
 // Decode string like [1][2][3][4] and return it as array of integers
 //
-function om_medals_decode_medal_string($string) {
+function om_medals_decode_medal_string($string, $expire = null) {
 	global $forum_om_medals;
+
+	$now = time();
 
 	// load medals cache, generate if not exists
 	om_medals_load_medals_cache();
@@ -300,6 +302,16 @@ function om_medals_decode_medal_string($string) {
 	$medals = explode('][', substr($string, 1, -1));
 
 	usort($medals, 'om_medals_cmp');
+
+	if (!is_array($expire))
+		return $medals;
+
+	foreach ($medals as $key => $id) {
+		if (isset($expire[$id]) && $expire[$id] < $now) {
+			unset($medals[$key]);
+		}
+	}
+
 	return $medals;
 }
 
@@ -307,8 +319,8 @@ function om_medals_decode_medal_string($string) {
 //
 // Generate html img element with medal image
 //
-function om_medals_generate_medal_tag($id) {
-	global $forum_om_medals, $forum_url, $forum_config;
+function om_medals_generate_medal_tag($id, $expire = null) {
+	global $forum_om_medals, $lang_om_medals, $forum_url, $forum_config;
 
 	// load medals cache, generate if not exists
 	om_medals_load_medals_cache();
@@ -319,12 +331,19 @@ function om_medals_generate_medal_tag($id) {
 	if (!isset($forum_om_medals[$id]))
 		return null;
 
+	// Medal title
+	$medal_title = forum_htmlencode($forum_om_medals[$id]['name']);
+	$expire_date = is_array($expire) && isset($expire[$id]) ? date('Y-m-d', $expire[$id]) : '';
+	if ($expire_date) {
+		$medal_title = forum_htmlencode(sprintf($lang_om_medals['Medal title'], $forum_om_medals[$id]['name'], $expire_date));
+    }
+
 	$tag = '<img src="'.OM_MEDALS_EXT_URL.$forum_om_medals[$id]['path'].'" alt="'.forum_htmlencode($forum_om_medals[$id]['name']).'" '
 		.'width="'.$forum_om_medals[$id]['width'].'" height="'.$forum_om_medals[$id]['height'].'"/>';
 
 	// link page to help, if we are not currently in help
 	if (!defined('FORUM_PAGE') || FORUM_PAGE != 'help')
-		$tag = '<a class="exthelp" href="'.forum_link($forum_url['help'], 'om_medals').'#m'.$id.'" title="'.forum_htmlencode($forum_om_medals[$id]['name']).'">'.$tag.'</a>';
+		$tag = '<a class="exthelp" href="'.forum_link($forum_url['help'], 'om_medals').'#m'.$id.'" title="'.$medal_title.'">'.$tag.'</a>';
 
 	($hook = get_hook('om_medals_fn_generate_medal_tag_output')) ? eval($hook) : null;
 

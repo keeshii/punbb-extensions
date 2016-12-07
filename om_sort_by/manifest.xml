@@ -8,7 +8,7 @@
 	<description>Add option to sort topics alphabetically.</description>
 	<author>om</author>
 	<minversion>1.4.0</minversion>
-	<maxtestedon>1.4.2</maxtestedon>
+	<maxtestedon>1.4.4</maxtestedon>
 	
 	<install><![CDATA[
 		if($forum_db->field_exists('topics', 'edited'))

@@ -10,7 +10,7 @@
 	<author>om</author>
 
 	<minversion>1.4RC1</minversion>
-	<maxtestedon>1.4.2</maxtestedon>
+	<maxtestedon>1.4.4</maxtestedon>
 
 	<install><![CDATA[
 	]]></install>
@@ -45,14 +45,14 @@
 			</div>
 
 			<div class="main-content main-frm">
-				<div class="post-entry" style="padding: 0 3em;">
+				<div class="content-head">
 
-						<div class="entry-content" style="font-size: 1.5em;">
-							<span style="font-size: 2.0em"><?php echo $lang_om_fill_location['We are sad']; ?></span>
-
+						<div class="post-entry">
 							<div style="margin: 0 auto; text-align: center;">
 								<img src="<?php echo $ext_info['url']; ?>/img/saaaad.png" />
 							</div>
+
+							<h4 class="entry-title"><?php echo $lang_om_fill_location['We are sad']; ?></h4>
 							<p><?php echo $lang_om_fill_location['Why are we sad']; ?></p>
 						</div>
 				</div>

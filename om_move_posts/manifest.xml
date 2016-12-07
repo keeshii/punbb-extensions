@@ -19,7 +19,7 @@
 	<author>om</author>
 
 	<minversion>1.4RC1</minversion>
-	<maxtestedon>1.4.2</maxtestedon>
+	<maxtestedon>1.4.4</maxtestedon>
 
 	<install><![CDATA[
 		if(!$forum_db->field_exists('posts', 'om_move_posts'))

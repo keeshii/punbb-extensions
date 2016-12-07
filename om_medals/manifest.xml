@@ -15,12 +15,12 @@
 <extension engine="1.0">
 	<id>om_medals</id>
 	<title>Medal system</title>
-	<version>0.0.2</version>
+	<version>0.0.3</version>
 	<description>Assign medals and rewards to users.</description>
 	<author>om</author>
 
 	<minversion>1.4RC1</minversion>
-	<maxtestedon>1.4.2</maxtestedon>
+	<maxtestedon>1.4.4</maxtestedon>
 
 	<note type="install" timing="pre">HTTP server must have write access into 'img' folder inside extension. Otherwise you won't be able to define medales.</note>
 	
@@ -71,6 +71,8 @@
 		
 		if(!$forum_db->field_exists('users', 'om_medals'))
 			$forum_db->add_field('users', 'om_medals', 'VARCHAR(400)', true);
+		if(!$forum_db->field_exists('users', 'om_medals_expire'))
+			$forum_db->add_field('users', 'om_medals_expire', 'VARCHAR(400)', true);
 		if(!$forum_db->field_exists('groups', 'g_mod_om_medals'))
 			$forum_db->add_field('groups', 'g_mod_om_medals', 'TINYINT(1)', false, '1');
 			
@@ -98,6 +100,7 @@
 	<uninstall><![CDATA[
 		$forum_db->drop_table('om_medals');
 		$forum_db->drop_field('users', 'om_medals');
+		$forum_db->drop_field('users', 'om_medals_expire');
 		$forum_db->drop_field('groups', 'g_mod_om_medals');
 		
 		// Delete extension options from the config
@@ -258,11 +261,18 @@ if ($action == 'om_medals_assign' && ($forum_user['g_id'] == FORUM_ADMIN || ($fo
 	} else {
 		$om_medals_of_user = array_map('intval', $_POST['assign']);
 		$om_medals_of_user= '['.implode('][', $om_medals_of_user).']';
+
+		$om_medals_of_user_expire = array();
+		foreach ($_POST['expire'] as $om_medal_id => $om_medal_expire) {
+			if ($om_medal_expire && strtotime($om_medal_expire) !== false) {
+				$om_medals_of_user_expire[intval($om_medal_id)] = strtotime($om_medal_expire);
+			}
+		}
 	}
 
 	$query = array(
 		'UPDATE'	=> 'users',
-		'SET'		=> 'om_medals=\''.$om_medals_of_user.'\'',
+		'SET'		=> 'om_medals=\''.$om_medals_of_user.'\', om_medals_expire=\''.$forum_db->escape(serialize($om_medals_of_user_expire)).'\'',
 		'WHERE'		=> 'id='.$id
 	);
 
@@ -289,7 +299,9 @@ if ($forum_user['g_id'] == FORUM_ADMIN || ($forum_user['g_moderator'] == '1' && 
 if (!defined('OM_MEDALS_FUNCTIONS_LOADED'))
 	require $ext_info['path'].'/functions.php';
 
-$om_medals_of_user = om_medals_decode_medal_string($user['om_medals']);
+$om_medals_of_user_expire = unserialize($user['om_medals_expire']);
+$om_medals_of_user = om_medals_decode_medal_string($user['om_medals'], $om_medals_of_user_expire);
+
 if (!empty($om_medals_of_user)) {
 ?>
 			<div class="ct-set data-set set<?php echo ++$forum_page['item_count'] ?>">
@@ -299,7 +311,7 @@ if (!empty($om_medals_of_user)) {
 					<?php
 						foreach ($om_medals_of_user as $cur_medal) {
 							echo '<span class="om_medals-profile '.($forum_config['o_om_medals_one_in_row'] ? 'om_medals-one-row' : '').'">'
-							.om_medals_generate_medal_tag($cur_medal).'</span> ';
+							.om_medals_generate_medal_tag($cur_medal, $om_medals_of_user_expire).'</span> ';
 						}
 					?>
 					</div>
@@ -312,24 +324,34 @@ if (!empty($om_medals_of_user)) {
 		
 		<hook id="vt_qr_get_posts"><![CDATA[
 // load information about medals when displaying topic
-$query['SELECT'] .= ',u.om_medals';
+$query['SELECT'] .= ',u.om_medals,u.om_medals_expire';
 		]]></hook>
 		
 		<hook id="vt_row_pre_display" priority="2"><![CDATA[
 // put medals below avatars or signatures
 // signatures must be turned on, otherwise medals will be displayed always below avatars
 
+// load language file
+if (!isset($lang_om_medals))
+{
+	if (file_exists($ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php'))
+		include $ext_info['path'].'/lang/'.$forum_user['language'].'/'.$ext_info['id'].'.php';
+	else
+		include $ext_info['path'].'/lang/English/'.$ext_info['id'].'.php';
+}
+
 if (!defined('OM_MEDALS_FUNCTIONS_LOADED'))
 	require $ext_info['path'].'/functions.php';
 
 // decode string like [1][2][3][4] to array of integers
-$om_medals_of_user = om_medals_decode_medal_string($cur_post['om_medals']);
+$om_medals_of_user_expire = unserialize($cur_post['om_medals_expire']);
+$om_medals_of_user = om_medals_decode_medal_string($cur_post['om_medals'], $om_medals_of_user_expire);
 
 // build html code with medals
 if (!empty($cur_post)) {
 	$om_medals_html = '';
 	foreach ($om_medals_of_user as $cur_medal) {
-		$om_medals_html .= '<span class="om_medals-viewtopic '.($forum_config['o_om_medals_one_in_row'] == '1' ? 'om_medals-one-row' : '').'">'.om_medals_generate_medal_tag($cur_medal).'</span> ';
+		$om_medals_html .= '<span class="om_medals-viewtopic '.($forum_config['o_om_medals_one_in_row'] == '1' ? 'om_medals-one-row' : '').'">'.om_medals_generate_medal_tag($cur_medal, $om_medals_of_user_expire).'</span> ';
 	}
 }
 

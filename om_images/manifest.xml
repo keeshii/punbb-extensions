@@ -18,7 +18,7 @@
 	<author>om</author>
 
 	<minversion>1.4RC1</minversion>
-	<maxtestedon>1.4.2</maxtestedon>
+	<maxtestedon>1.4.4</maxtestedon>
 
 	<note type="install" timing="pre">Server must have write access into 'img' folder inside extension. Otherwise download will fail.</note>
 

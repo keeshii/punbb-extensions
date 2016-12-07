@@ -8,7 +8,7 @@
 	<description>Add simple subforums functionality.</description>
 	<author>om</author>
 	<minversion>1.4</minversion>
-	<maxtestedon>1.4.2</maxtestedon>
+	<maxtestedon>1.4.4</maxtestedon>
 
 	<install><![CDATA[
 // Add field for parent forum

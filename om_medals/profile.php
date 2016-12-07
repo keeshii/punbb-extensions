@@ -72,11 +72,21 @@ if ($section == 'om_medals' && ($forum_user['g_id'] == FORUM_ADMIN || ($forum_us
 				</h3>
 			</div>
 
+			<div class="ct-box info-box">
+				<p>
+					<?php echo $lang_om_medals['Expire date info'] ?>
+				</p>
+			</div>
+
 			<div class="frm-group frm-hdgroup group1">
 <?php
 
 	$forum_page['item_count'] = $forum_page['fld_count'] = 0;
 	$om_medals_of_user = om_medals_decode_medal_string($user['om_medals']);
+	$om_medals_of_user_expire = unserialize($user['om_medals_expire']);
+	if (!is_array($om_medals_of_user_expire)) {
+		$om_medals_of_user_expire = array();
+	}
 
 		foreach ($forum_om_medals as $cur_medal)
 		{
@@ -85,7 +95,7 @@ if ($section == 'om_medals' && ($forum_user['g_id'] == FORUM_ADMIN || ($forum_us
 ?>
 				<fieldset id="forum<?php echo $cur_medal['id'] ?>" class="mf-set set<?php echo ++$forum_page['item_count'] ?><?php echo ($forum_page['item_count'] == 1) ? ' mf-head' : ' mf-extra' ?>">
 					<legend>
-						<span><input type="checkbox" id="fld<?php echo $forum_page['fld_count'] ?>" name="assign[]" value="<?php echo $cur_medal['id'] ?>" <?php
+						<span><input type="checkbox" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="assign[]" value="<?php echo $cur_medal['id'] ?>" <?php
 						echo in_array($cur_medal['id'], $om_medals_of_user) ? 'checked="checked"' : '' ?> /></span>
 					</legend>
 					<div class="mf-box">
@@ -96,9 +106,10 @@ if ($section == 'om_medals' && ($forum_user['g_id'] == FORUM_ADMIN || ($forum_us
 						</div>
 
 <?php ($hook = get_hook('om_medals_profile_cur_medal_desc')) ? eval($hook) : null; ?>
-						<div class="mf-field mf-field1 forum-field">
-							<span class="aslabel"><?php echo $lang_om_medals['Medal description'] ?></span>
-							<span class="fld-input"><?php echo empty($cur_medal['desc']) ? '-' : $cur_medal['desc'] ?></span>
+						<div class="mf-field mf-field2 forum-field">
+							<span class="aslabel"><?php echo $lang_om_medals['Expire date'] ?></span>
+							<span class="fld-input"><input type="text" id="fld<?php echo ++$forum_page['fld_count'] ?>" name="expire[<?php echo $cur_medal['id'] ?>]" value="<?php
+							echo array_key_exists($cur_medal['id'], $om_medals_of_user_expire) ? date('Y-m-d', $om_medals_of_user_expire[$cur_medal['id']]) : '' ?>" /></span>
 						</div>
 
 <?php ($hook = get_hook('om_medals_profile_cur_medal_img')) ? eval($hook) : null; ?>

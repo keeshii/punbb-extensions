@@ -15,7 +15,7 @@
 	<author>om</author>
 
 	<minversion>1.4RC1</minversion>
-	<maxtestedon>1.4.2</maxtestedon>
+	<maxtestedon>1.4.4</maxtestedon>
 
 	<hooks>
 		<hook id="pf_change_details_about_pre_header_load"><![CDATA[

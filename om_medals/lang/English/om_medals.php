@@ -13,6 +13,7 @@ $lang_om_medals = array(
 	'Medal updated'			=> 'Medal updated',
 	'Edit medal'			=> 'Edit medal',
 	'Edit medal head'		=> 'Edit medal',
+	'Medal title'			=> '%s - %s',
 	
 	
 	'Add medal head'		=> 'Add medal',
@@ -68,6 +69,8 @@ $lang_om_medals = array(
 	'No medals definied'		=> 'No medals definied',
 	'Assignment updated'		=> 'Assignment saved',
 	'User medals'			=> 'Medals',
+	'Expire date'			=> 'Expire date',
+	'Expire date info'		=> 'Assign medals to user. Medals may have expiration date, use format (YYYY-MM-DD).',
 
 
 	// admin settings
